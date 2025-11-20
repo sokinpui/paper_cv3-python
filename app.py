@@ -90,7 +90,7 @@ def run_paddleseg(image_path, paddle_args):
 
 
 def run_analysis(
-    image_path, height, width, metric_name, top_n, sort_by, descending, paddle_args=None
+    image_path, height, width, metric_name, top_n, sort_by, descending, run_paddle, paddle_args=None
 ):
     """
     The core function called when user clicks 'Run Detection'
@@ -145,10 +145,13 @@ def run_analysis(
         pad_duration = 0.0
 
         if paddle_args and paddle_args.get("root"):
-            t_pad_start = time.time()
-            paddle_img, paddle_status = run_paddleseg(image_path, paddle_args)
-            t_pad_end = time.time()
-            pad_duration = t_pad_end - t_pad_start
+            if run_paddle:
+                t_pad_start = time.time()
+                paddle_img, paddle_status = run_paddleseg(image_path, paddle_args)
+                t_pad_end = time.time()
+                pad_duration = t_pad_end - t_pad_start
+            else:
+                paddle_status = "Skipped (User Toggle)"
 
         # Performance Stats
         N = patches.shape[0]
@@ -190,6 +193,9 @@ def create_ui(input_dir=None, paddle_args=None):
 
         with gr.Row():
             with gr.Column(scale=1):
+                # Move Run Button to the Top
+                btn_run = gr.Button("🚀 Run Detection", variant="primary")
+
                 # Input Controls
                 img_input = gr.Image(type="filepath", label="Input Image")
 
@@ -240,7 +246,13 @@ def create_ui(input_dir=None, paddle_args=None):
                     value=False, label="Sort Descending (High Score = Significant)"
                 )
 
-                btn_run = gr.Button("🚀 Run Detection", variant="primary")
+                 # Toggle for PaddleSeg
+                paddle_configured = bool(paddle_args and paddle_args.get("root"))
+                paddle_toggle = gr.Checkbox(
+                    value=paddle_configured, 
+                    label="Run PaddleSeg Comparison",
+                    interactive=paddle_configured
+                )
 
             with gr.Column(scale=2):
                 # Outputs
@@ -258,8 +270,8 @@ def create_ui(input_dir=None, paddle_args=None):
         )
 
         # Wrapper to pass paddle_args
-        def analysis_wrapper(img, h, w, metric, top_n, sort, desc):
-            return run_analysis(img, h, w, metric, top_n, sort, desc, paddle_args)
+        def analysis_wrapper(img, h, w, metric, top_n, sort, desc, run_pad):
+            return run_analysis(img, h, w, metric, top_n, sort, desc, run_pad, paddle_args)
 
         btn_run.click(
             fn=analysis_wrapper,
@@ -271,6 +283,7 @@ def create_ui(input_dir=None, paddle_args=None):
                 top_n_input,
                 sort_input,
                 desc_input,
+                paddle_toggle,
             ],
             outputs=[img_output, paddle_output, json_output, perf_output],
         )
