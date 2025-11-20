@@ -118,8 +118,9 @@ def run_analysis(
             image_tensor, int(height), int(width)
         )
 
-        # 3. Analyze
-        t0 = time.time()
+        # 3. Analyze & Annotate (Detection Phase)
+        t_det_start = time.time()
+
         stats = analyzer.analyze(
             patches,
             grid_shape,
@@ -127,33 +128,43 @@ def run_analysis(
             sort_by=sort_by,
             ascending=not descending,
         )
-        t1 = time.time()
+
+        result_image = processor.get_annotated_rgb(
+            image_tensor, stats, int(height), int(width)
+        )
+
+        t_det_end = time.time()
+        det_duration = t_det_end - t_det_start
+        # Clear GPU cache before running PaddleSeg to avoid OOM/Lag
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # 4. Run PaddleSeg (Optional)
         paddle_img = None
         paddle_status = "Not Configured"
+        pad_duration = 0.0
+
         if paddle_args and paddle_args.get("root"):
+            t_pad_start = time.time()
             paddle_img, paddle_status = run_paddleseg(image_path, paddle_args)
+            t_pad_end = time.time()
+            pad_duration = t_pad_end - t_pad_start
 
         # Performance Stats
-        duration = t1 - t0
         N = patches.shape[0]
         total_pairs = N * N
-        cps = total_pairs / duration if duration > 0 else 0
+        cps = total_pairs / det_duration if det_duration > 0 else 0
 
         perf_text = (
             f"### ⚡ Performance Metrics\n"
-            f"- **Analysis Time:** {duration:.4f} seconds\n"
+            f"- **Detection Time (End-to-End):** {det_duration:.4f} s\n"
+            f"- **PaddleSeg Time:** {pad_duration:.4f} s\n"
             f"- **Total Units:** {N} (Grid: {grid_shape})\n"
             f"- **Total Comparisons:** {total_pairs:,}\n"
-            f"- **Throughput:** {cps:,.0f} comparisons/sec\n"
+            f"- **Detection Throughput:** {cps:,.0f} pairs/sec\n"
             f"- **PaddleSeg Status:** {paddle_status}"
         )
 
-        # 5. Visualize (My Detection)
-        result_image = processor.get_annotated_rgb(
-            image_tensor, stats, int(height), int(width)
-        )
 
         # 6. Format JSON result
         json_result = json.dumps([u.to_dict() for u in stats], indent=4)
