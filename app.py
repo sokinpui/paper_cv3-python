@@ -225,8 +225,8 @@ def create_ui(input_dir=None, paddle_args=None):
                         )
 
                 with gr.Row():
-                    h_input = gr.Number(value=32, label="Unit Height", precision=0)
-                    w_input = gr.Number(value=32, label="Unit Width", precision=0)
+                    h_input = gr.Number(value=24, label="Unit Height", precision=0)
+                    w_input = gr.Number(value=24, label="Unit Width", precision=0)
 
                 metric_input = gr.Radio(
                     choices=["SSIM (Structure)", "CIELAB (Color)"],
