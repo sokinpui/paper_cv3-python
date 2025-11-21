@@ -71,29 +71,18 @@ class ImageProcessor:
         is_bgr: bool = False,
     ):
         """
-        Helper to draw merged contours (polygons) and labels.
+        Helper to draw individual rectangles and labels for units.
         """
-        H, W = img.shape[:2]
-        mask = np.zeros((H, W), dtype=np.uint8)
-
-        # 1. Create a binary mask of all significant units
-        for unit in units:
-            r, c = unit.row, unit.col
-            y, x = r * unit_h, c * unit_w
-            # Fill rectangle on mask (white)
-            cv2.rectangle(mask, (x, y), (x + unit_w, y + unit_h), 255, -1)
-
-        # 2. Find contours (polygons) around the filled areas
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # 3. Draw Contours (Green)
-        cv2.drawContours(img, contours, -1, (0, 255, 0), 3)
-
-        # 4. Draw Rank Labels on top
+        box_color = (0, 255, 0)  # Green
         text_color = (0, 0, 255) if is_bgr else (255, 0, 0)  # Red
+
         for i, unit in enumerate(units):
             r, c = unit.row, unit.col
             y, x = r * unit_h, c * unit_w
+
+            # Draw Rectangle (Individual)
+            cv2.rectangle(img, (x, y), (x + unit_w, y + unit_h), box_color, 2)
+
             label = f"#{i+1}"
             cv2.putText(
                 img,
@@ -198,16 +187,16 @@ class ImageProcessor:
                 if norm < 0.5:
                     # 0.0 (Blue) -> 0.5 (Green)
                     n = norm * 2
-                    b, g, r_val = int(255 * (1 - n)), int(255 * n), 0
+                    r_val, g_val, b_val = 0, int(255 * n), int(255 * (1 - n))
                 else:
                     # 0.5 (Green) -> 1.0 (Red)
                     n = (norm - 0.5) * 2
-                    b, g, r_val = 0, int(255 * (1 - n)), int(255 * n)
+                    r_val, g_val, b_val = int(255 * n), int(255 * (1 - n)), 0
 
                 y, x = r * unit_h, c * unit_w
                 # Draw filled rectangle
                 cv2.rectangle(
-                    overlay, (x, y), (x + unit_w, y + unit_h), (b, g, r_val), -1
+                    overlay, (x, y), (x + unit_w, y + unit_h), (r_val, g_val, b_val), -1
                 )
 
         # Alpha blend

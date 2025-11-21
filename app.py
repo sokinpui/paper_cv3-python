@@ -24,7 +24,15 @@ except Exception as e:
 
 
 def run_analysis(
-    image_path, height, width, metric_name, top_n, sort_by, descending, action_mode
+    image_path,
+    height,
+    width,
+    metric_name,
+    top_n,
+    sort_by,
+    descending,
+    use_local,
+    action_mode,
 ):
     """
     The core function called when user clicks 'Run Detection'
@@ -63,12 +71,16 @@ def run_analysis(
         else:
             actual_top_n = int(top_n)
 
+        # Local Neighbor Radius: 1 means 3x3 window. None means Global.
+        radius = 1 if use_local else None
+
         stats = analyzer.analyze(
             patches,
             grid_shape,
             top_n=actual_top_n,
             sort_by=sort_by,
             ascending=not descending,
+            neighbor_radius=radius,
         )
 
         result_image = processor.get_annotated_rgb(
@@ -162,8 +174,8 @@ def create_ui(input_dir=None):
                         )
 
                 with gr.Row():
-                    h_input = gr.Number(value=250, label="Unit Height", precision=0)
-                    w_input = gr.Number(value=250, label="Unit Width", precision=0)
+                    h_input = gr.Number(value=200, label="Unit Height", precision=0)
+                    w_input = gr.Number(value=200, label="Unit Width", precision=0)
 
                 metric_input = gr.Radio(
                     choices=["SSIM (Structure)", "CIELAB (Color)"],
@@ -180,7 +192,12 @@ def create_ui(input_dir=None):
                     )
 
                 desc_input = gr.Checkbox(
-                    value=False, label="Sort Descending (High Score = Significant)"
+                    value=True, label="Sort Descending (High Score = Significant)"
+                )
+
+                local_input = gr.Checkbox(
+                    value=False,
+                    label="Local Comparison Only (Best for Line/Edge Defects)",
                 )
 
             with gr.Column(scale=2):
@@ -192,12 +209,6 @@ def create_ui(input_dir=None):
                 perf_output = gr.Markdown()
                 json_output = gr.Code(language="json", label="Statistics")
 
-        # Event Binding
-        # Auto-adjust sort direction: CIELAB -> Descending (True), SSIM -> Ascending (False)
-        metric_input.change(
-            fn=lambda x: x == "CIELAB (Color)", inputs=metric_input, outputs=desc_input
-        )
-
         # Common inputs for all buttons
         common_inputs = [
             img_input,
@@ -207,6 +218,7 @@ def create_ui(input_dir=None):
             top_n_input,
             sort_input,
             desc_input,
+            local_input,
         ]
         common_outputs = [img_output, matrix_output, json_output, perf_output]
 

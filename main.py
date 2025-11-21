@@ -34,10 +34,15 @@ def main():
         help="Stat to rank by",
     )
     parser.add_argument(
-        "--descending",
-        "-r",
+        "--ascending",
+        "-a",
         action="store_true",
-        help="Sort descending (default ascending)",
+        help="Sort ascending (default descending)",
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Compare units only to immediate neighbors (radius=1)",
     )
     parser.add_argument(
         "--output",
@@ -62,19 +67,9 @@ def main():
     # 2. Initialize Components
     processor = ImageProcessor(device)
 
-    if args.metric == "ssim":
-        # SSIM: Higher is more similar.
-        # Significant = Low Mean SSIM (Unique) -> Ascending sort
-        metric = SSIMMetric()
-        default_asc = True
-    else:
-        # CIELab: Higher is more different (Distance).
-        # Significant = High Mean Distance (Unique) -> Descending sort
-        metric = CIELabMetric()
-        default_asc = False
-
-    # Override sort order if user specified
-    ascending = args.descending is False if args.descending else default_asc
+    metric = SSIMMetric() if args.metric == "ssim" else CIELabMetric()
+    # Both metrics now use High Score = Different. Default sort is Descending (False).
+    ascending = args.ascending
 
     analyzer = PatchAnalyzer(metric)
 
@@ -89,12 +84,15 @@ def main():
         print(f"Extracted {patches.shape[0]} units. Grid: {grid_shape}")
         print("Computing pairwise matrix and statistics...")
 
+        radius = 1 if args.local else None
+
         top_units = analyzer.analyze(
             patches,
             grid_shape,
             top_n=args.top_n,
             sort_by=args.sort_by,
             ascending=ascending,
+            neighbor_radius=radius,
         )
 
         # 4. Output

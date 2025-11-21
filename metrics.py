@@ -12,7 +12,7 @@ class MetricStrategy:
 class SSIMMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
-        Computes structural similarity between all pairs.
+        Computes structural dissimilarity (1 - SSIM) between all pairs.
         Simplified SSIM for patch-wise comparison.
         """
         # Flatten spatial dims: (N, C, H*W)
@@ -99,7 +99,7 @@ class SSIMMetric(MetricStrategy):
         contrast_structure = (2 * sig_xy + C2) / (sig2_x + sig2_y + C2)
 
         ssim_map = luminance * contrast_structure
-        return ssim_map
+        return 1.0 - ssim_map
 
 class CIELabMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
@@ -108,6 +108,12 @@ class CIELabMetric(MetricStrategy):
         Input assumed to be normalized RGB [0, 1].
         """
         lab = self._rgb_to_lab(patches)
+
+        # Discard the 'L' (Lightness) channel. 
+        # lab is (N, 3, H, W). Channel 0 is L, 1 is a, 2 is b.
+        # We only keep channels 1 and 2 (a and b).
+        lab = lab[:, 1:, :, :]
+
 
         # Flatten to (N, Features)
         # We want the average color difference per pixel or total difference?

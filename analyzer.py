@@ -20,9 +20,10 @@ class PatchAnalyzer:
     def __init__(self, metric_strategy):
         self.metric = metric_strategy
 
-    def analyze(self, patches: torch.Tensor, grid_shape: tuple, top_n: int, sort_by: str = 'mean', ascending: bool = True) -> List[UnitStats]:
+    def analyze(self, patches: torch.Tensor, grid_shape: tuple, top_n: int, sort_by: str = 'mean', ascending: bool = True, neighbor_radius: int = None) -> List[UnitStats]:
         """
         patches: (N, C, H, W)
+        neighbor_radius: If provided, limits comparison to spatial neighbors within this radius (Chebyshev distance).
         """
         N = patches.shape[0]
         if N < 2:
@@ -37,6 +38,24 @@ class PatchAnalyzer:
         mask = torch.eye(N, device=patches.device).bool()
         matrix.masked_fill_(mask, float('nan'))
 
+        # 2.1 Apply Spatial Mask (Optional: Local Contrast)
+        if neighbor_radius is not None and neighbor_radius > 0:
+            rows, cols = grid_shape
+            # Generate grid coordinates (N, 2)
+            # r: [0, 0, ..., 1, 1, ...]
+            # c: [0, 1, ..., 0, 1, ...]
+            r_idx = torch.arange(rows, device=patches.device).view(-1, 1).repeat(1, cols).view(-1)
+            c_idx = torch.arange(cols, device=patches.device).view(1, -1).repeat(rows, 1).view(-1)
+            
+            # Compute pairwise spatial distance (Chebyshev: max(|dx|, |dy|))
+            # We use broadcasting: (N, 1) - (1, N)
+            dist_r = torch.abs(r_idx.unsqueeze(1) - r_idx.unsqueeze(0))
+            dist_c = torch.abs(c_idx.unsqueeze(1) - c_idx.unsqueeze(0))
+            spatial_dist = torch.maximum(dist_r, dist_c)
+            
+            spatial_mask = spatial_dist > neighbor_radius
+            matrix.masked_fill_(spatial_mask, float('nan'))
+
         # 3. Calculate Statistics per Unit (Row-wise)
         # Clone to avoid modifying matrix for subsequent steps if needed
         data = matrix.clone()
@@ -45,28 +64,32 @@ class PatchAnalyzer:
         # Note: nanmean, nanmedian are available in newer pytorch versions.
         # If not, we mask. Assuming modern pytorch here.
 
+        # Count valid comparisons per unit (row)
+        # When using local radius, this varies (corners < center).
+        valid_counts = (~torch.isnan(data)).sum(dim=1)
+        
+        # 1. Mean
         means = torch.nanmean(data, dim=1)
 
-        # Median: torch.nanmedian is strictly available in very recent versions.
-        # Fallback: sort and pick middle ignoring nans
+        # 2. Median
+        # Sort puts NaNs at the end (ascending).
         sorted_vals, _ = torch.sort(data, dim=1)
-        # The last column is NaN (since we pushed NaNs to end or beginning depending on sort).
-        # Actually NaNs are usually at the end.
-        # Valid elements are N-1. Median index is (N-1)//2
-        medians = sorted_vals[:, (N-1)//2]
+        # Index of the middle valid element
+        mid_indices = ((valid_counts - 1) // 2).clamp(min=0)
+        medians = torch.gather(sorted_vals, 1, mid_indices.unsqueeze(1)).squeeze(1)
 
-        # Std Dev
-        # torch.std does not support nan ignore natively in older versions easily without a loop or masking
-        # We use a mask approach
-        not_nan_mask = ~torch.isnan(data)
-        # We can't easily vectorize std with variable lengths if N is constant,
-        # but here N is constant (N-1 valid items).
-        # So we can just compute std on the N-1 items.
-        # Let's gather valid items.
-        valid_data = data[not_nan_mask].view(N, N-1)
-        stds = torch.std(valid_data, dim=1)
-        mins = torch.min(valid_data, dim=1).values
-        maxs = torch.max(valid_data, dim=1).values
+        # 3. Std Dev (Sample)
+        # var = sum((x - mean)^2) / (n - 1)
+        centered = data - means.unsqueeze(1)
+        sum_sq_diff = torch.nansum(centered**2, dim=1)
+        # Avoid division by zero if count <= 1
+        divisor = (valid_counts - 1).clamp(min=1)
+        stds = torch.sqrt(sum_sq_diff / divisor)
+
+        # 4. Min / Max
+        # Fill NaNs with inf/-inf to ignore them in min/max reduction
+        mins = torch.nan_to_num(data, nan=float('inf')).min(dim=1).values
+        maxs = torch.nan_to_num(data, nan=float('-inf')).max(dim=1).values
 
         # 4. Aggregate results
         results = []
