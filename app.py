@@ -9,7 +9,7 @@ import gradio as gr
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric, TextureColorMetric
+from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric, TextureColorMetric, GradientColorMetric, HistogramMetric
 from processor import ImageProcessor
 
 # 1. Initialize CUDA Device once
@@ -51,6 +51,10 @@ def run_analysis(
             metric = SSIMMetric()
         elif metric_name == "Texture & Color (Defects)":
             metric = TextureColorMetric()
+        elif metric_name == "Gradient & Color (Lines/Defects)":
+            metric = GradientColorMetric()
+        elif metric_name == "Color Histogram":
+            metric = HistogramMetric()
         else:
             # Fallback / Default
             metric = LabMomentsMetric()
@@ -206,7 +210,13 @@ def create_ui(input_dir=None):
                     w_input = gr.Number(value=200, label="Unit Width", precision=0)
 
                 metric_input = gr.Radio(
-                    choices=["SSIM (Structure)", "Texture & Color (Defects)", "LAB Moments (Color Stats)"],
+                    choices=[
+                        "SSIM (Structure)", 
+                        "Gradient & Color (Lines/Defects)",
+                        "Texture & Color (Defects)", 
+                        "Color Histogram",
+                        "LAB Moments (Color Stats)"
+                    ],
                     value="SSIM (Structure)",
                     label="Comparison Metric",
                 )

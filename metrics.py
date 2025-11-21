@@ -230,3 +230,96 @@ class TextureColorMetric(CIELabMetric):
         f_std = features.std(dim=0, keepdim=True) + 1e-8
         
         return (features - f_mean) / f_std
+
+class GradientColorMetric(CIELabMetric):
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Features:
+        1. Texture Strength (Gradient Magnitude on L) - Captures lines/edges.
+        2. Chrominance (Lab 'a' & 'b' Means) - Captures color shifts.
+        3. Roughness (Luminance Std Dev) - Captures noise/texture variance.
+        """
+        # 1. Convert to Lab
+        lab = self._rgb_to_lab(patches)
+        l_chan = lab[:, 0:1, :, :]
+        a_chan = lab[:, 1:2, :, :]
+        b_chan = lab[:, 2:3, :, :]
+
+        # 2. Texture Strength (Gradient Magnitude on L)
+        kx = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], device=patches.device).view(1, 1, 3, 3).float()
+        ky = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], device=patches.device).view(1, 1, 3, 3).float()
+        
+        gx = F.conv2d(l_chan, kx, padding=1)
+        gy = F.conv2d(l_chan, ky, padding=1)
+        grad_mag = torch.sqrt(gx**2 + gy**2 + 1e-8)
+        
+        feat_texture = grad_mag.mean(dim=(2, 3)) # (N, 1)
+
+        # 3. Roughness (Luminance Std Dev)
+        feat_roughness = l_chan.std(dim=(2, 3)) # (N, 1)
+
+        # 4. Chrominance (Mean a, Mean b)
+        feat_a = a_chan.mean(dim=(2, 3)) # (N, 1)
+        feat_b = b_chan.mean(dim=(2, 3)) # (N, 1)
+
+        # Concatenate: (N, 4)
+        features = torch.cat([feat_texture, feat_roughness, feat_a, feat_b], dim=1)
+
+        # 5. Z-Score Normalization
+        f_mean = features.mean(dim=0, keepdim=True)
+        f_std = features.std(dim=0, keepdim=True) + 1e-8
+        
+        return (features - f_mean) / f_std
+
+class HistogramMetric(CIELabMetric):
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes marginal color histograms for L, a, b channels.
+        Robust to rotation/translation of texture, focuses on color quantity.
+        """
+        # 1. Convert to Lab
+        lab = self._rgb_to_lab(patches) # (N, 3, H, W)
+        
+        N, C, H, W = lab.shape
+        num_bins = 32
+        
+        # 2. Normalize channels to [0, 1] for binning
+        # L: [0, 100] -> [0, 1]
+        l = lab[:, 0].clamp(0, 100) / 100.0
+        # a, b: [-128, 127] approx -> [0, 1]
+        a = (lab[:, 1].clamp(-128, 127) + 128) / 255.0
+        b = (lab[:, 2].clamp(-128, 127) + 128) / 255.0
+        
+        normalized = torch.stack([l, a, b], dim=1) # (N, 3, H, W)
+        
+        # 3. Binning
+        # Scale to integer indices [0, num_bins-1]
+        indices = (normalized * num_bins).long().clamp(0, num_bins - 1)
+        
+        # Flatten spatial dimensions
+        indices = indices.view(N, C, -1) # (N, 3, H*W)
+        
+        # 4. Vectorized Batched Histogram (bincount)
+        # Trick: Offset indices so every patch/channel has unique bins in a flat array
+        # Global Index = patch_idx*(C*bins) + channel_idx*(bins) + bin_idx
+        
+        offset_patch = torch.arange(N, device=lab.device) * (C * num_bins)
+        offset_channel = torch.arange(C, device=lab.device) * num_bins
+        
+        # Broadcasting to create offset map (N, C, 1)
+        offsets = offset_patch.view(N, 1, 1) + offset_channel.view(1, C, 1)
+        
+        flat_indices = (indices + offsets).view(-1) # Flatten everything
+        
+        total_bins = N * C * num_bins
+        counts = torch.bincount(flat_indices, minlength=total_bins)
+        
+        # Reshape back to (N, Feature_Vector_Size)
+        # Feature vector = C * num_bins = 3 * 32 = 96
+        hist_features = counts.view(N, -1).float()
+        
+        # 5. Normalize (PDF)
+        # Divide by number of pixels so sum is 1 per channel (roughly)
+        hist_features = hist_features / (H * W)
+        
+        return hist_features
