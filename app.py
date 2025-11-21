@@ -83,7 +83,7 @@ def run_analysis(
 
         t_det_end = time.time()
         det_duration = t_det_end - t_det_start
-        
+
         # Clear GPU cache before running PaddleSeg to avoid OOM/Lag
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -100,7 +100,6 @@ def run_analysis(
             f"- **Total Comparisons:** {total_pairs:,}\n"
             f"- **Detection Throughput:** {cps:,.0f} pairs/sec"
         )
-
 
         # 6. Format JSON result
         json_result = json.dumps([u.to_dict() for u in stats], indent=4)
@@ -131,7 +130,7 @@ def create_ui(input_dir=None):
                     btn_run = gr.Button("🚀 Top N", variant="primary")
                     btn_all = gr.Button("👀 All Units")
                     btn_matrix = gr.Button("📊 Matrix")
-                
+
                 gr.Markdown("### Settings")
 
                 # Input Controls
@@ -163,8 +162,8 @@ def create_ui(input_dir=None):
                         )
 
                 with gr.Row():
-                    h_input = gr.Number(value=24, label="Unit Height", precision=0)
-                    w_input = gr.Number(value=24, label="Unit Width", precision=0)
+                    h_input = gr.Number(value=250, label="Unit Height", precision=0)
+                    w_input = gr.Number(value=250, label="Unit Width", precision=0)
 
                 metric_input = gr.Radio(
                     choices=["SSIM (Structure)", "CIELAB (Color)"],
@@ -201,8 +200,13 @@ def create_ui(input_dir=None):
 
         # Common inputs for all buttons
         common_inputs = [
-            img_input, h_input, w_input, metric_input, 
-            top_n_input, sort_input, desc_input
+            img_input,
+            h_input,
+            w_input,
+            metric_input,
+            top_n_input,
+            sort_input,
+            desc_input,
         ]
         common_outputs = [img_output, matrix_output, json_output, perf_output]
 
