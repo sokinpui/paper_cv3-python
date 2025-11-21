@@ -46,12 +46,13 @@ class ImageProcessor:
         sharpen_factor: float = 0.0,
         clahe_limit: float = 0.0,
         grayscale: bool = False,
+        quantize_4bit: bool = False,
     ) -> torch.Tensor:
         """
         Applies advanced CV preprocessing for texture analysis.
-        Includes: Grayscale, Gaussian Blur (Denoise), Unsharp Mask (Sharpen), CLAHE (Local Contrast).
+        Includes: Grayscale, Gaussian Blur (Denoise), Unsharp Mask (Sharpen), CLAHE (Local Contrast), 4-bit Quantization.
         """
-        if blur_radius <= 0 and sharpen_factor <= 0 and clahe_limit <= 0 and not grayscale:
+        if blur_radius <= 0 and sharpen_factor <= 0 and clahe_limit <= 0 and not grayscale and not quantize_4bit:
             return image
 
         # Move to CPU/Numpy for OpenCV operations
@@ -66,7 +67,7 @@ class ImageProcessor:
         img_cv = (img_np * 255).clip(0, 255).astype(np.uint8)
 
         # 0. Grayscale
-        if grayscale:
+        if grayscale or quantize_4bit:
             img_gray = cv2.cvtColor(img_cv, cv2.COLOR_RGB2GRAY)
             img_cv = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2RGB)
 
@@ -95,6 +96,11 @@ class ImageProcessor:
             img_cv = cv2.addWeighted(
                 img_cv, 1.0 + sharpen_factor, gaussian, -sharpen_factor, 0
             )
+
+        # 4. Quantize 4-bit (16 levels)
+        if quantize_4bit:
+            # Map 0-255 to 16 levels (0, 17, 34, ..., 255)
+            img_cv = (img_cv // 16) * 17
 
         # Convert back to Tensor
         img_final = img_cv.astype(np.float32) / 255.0

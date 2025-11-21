@@ -8,7 +8,7 @@ import time
 import gradio as gr
 import torch
 
-from analyzer import PatchAnalyzer
+from analyzer import PatchAnalyzer, LocalAnomalyAnalyzer
 from metrics import (
     CIELabMetric,
     GradientColorMetric,
@@ -46,7 +46,7 @@ except Exception as e:
     device = torch.device("cpu")
 
 
-def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe, grayscale):
+def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe, grayscale, quantize):
     """
     Lightweight function to generate a preview of the pre-processing.
     Returns: (Modal Update, Image)
@@ -63,7 +63,7 @@ def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe, gra
             image_tensor, float(brightness), float(contrast)
         )
         image_tensor = processor.apply_preprocessing(
-            image_tensor, float(blur), float(sharpen), float(clahe), grayscale
+            image_tensor, float(blur), float(sharpen), float(clahe), grayscale, quantize
         )
 
         img_np = image_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
@@ -88,7 +88,9 @@ def run_analysis(
     sharpen,
     clahe,
     grayscale,
+    quantize,
     overlap,
+    algo_mode,
     action_mode,
 ):
     """
@@ -120,7 +122,7 @@ def run_analysis(
 
         # 1.6 Preprocessing (Blur, Sharpen, CLAHE)
         image_tensor = processor.apply_preprocessing(
-            image_tensor, float(blur), float(sharpen), float(clahe), grayscale
+            image_tensor, float(blur), float(sharpen), float(clahe), grayscale, quantize
         )
 
         # 2. Tile
@@ -145,7 +147,11 @@ def run_analysis(
 
             # Instantiate and Analyze
             metric = MetricClass()
-            analyzer = PatchAnalyzer(metric)
+
+            if algo_mode.startswith("Local"):
+                analyzer = LocalAnomalyAnalyzer(metric)
+            else:
+                analyzer = PatchAnalyzer(metric)
 
             stats = analyzer.analyze(
                 patches,
@@ -321,6 +327,9 @@ def create_ui(input_dir=None):
                     grayscale_input = gr.Checkbox(
                         value=False, label="Convert to Grayscale"
                     )
+                    quantize_input = gr.Checkbox(
+                        value=False, label="4-bit Grayscale (16 Levels)"
+                    )
 
                 with gr.Row():
                     top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
@@ -329,6 +338,12 @@ def create_ui(input_dir=None):
                         value="mean",
                         label="Sort By Stat",
                     )
+
+                algo_input = gr.Radio(
+                    choices=["Global (Coherence)", "Local (Neighbors)"],
+                    value="Global (Coherence)",
+                    label="Detection Algorithm",
+                )
 
                 desc_input = gr.Checkbox(
                     value=True, label="Sort Descending (High Score = Significant)"
@@ -364,7 +379,9 @@ def create_ui(input_dir=None):
             sharpen_input,
             clahe_input,
             grayscale_input,
+            quantize_input,
             overlap_input,
+            algo_input,
         ]
         common_outputs = metric_outputs + [json_output]
 
@@ -395,6 +412,7 @@ def create_ui(input_dir=None):
             sharpen_input,
             clahe_input,
             grayscale_input,
+            quantize_input,
         ]
         btn_preview.click(
             fn=generate_preview,

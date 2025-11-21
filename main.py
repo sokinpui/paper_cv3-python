@@ -4,7 +4,7 @@ import sys
 
 import torch
 
-from analyzer import PatchAnalyzer
+from analyzer import PatchAnalyzer, LocalAnomalyAnalyzer
 from metrics import (
     CIELabMetric,
     GradientColorMetric,
@@ -34,6 +34,13 @@ def main():
         choices=["ssim", "cielab", "moments", "texture", "grad_color", "hist"],
         default="ssim",
         help="Comparison metric",
+    )
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        choices=["global", "local"],
+        default="global",
+        help="Detection algorithm: 'global' (all-vs-all) or 'local' (neighbors)",
     )
     parser.add_argument(
         "--top_n", type=int, default=5, help="Number of significant units to output"
@@ -93,6 +100,11 @@ def main():
         action="store_true",
         help="Convert image to grayscale before processing",
     )
+    parser.add_argument(
+        "--quantize",
+        action="store_true",
+        help="Reduce image to 4-bit grayscale (16 levels)",
+    )
 
     args = parser.parse_args()
 
@@ -126,7 +138,10 @@ def main():
     # Both metrics now use High Score = Different. Default sort is Descending (False).
     ascending = args.ascending
 
-    analyzer = PatchAnalyzer(metric)
+    if args.algorithm == "local":
+        analyzer = LocalAnomalyAnalyzer(metric)
+    else:
+        analyzer = PatchAnalyzer(metric)
 
     # 3. Execution Pipeline
     try:
@@ -144,7 +159,7 @@ def main():
 
         # Advanced Texture Preprocessing
         image_tensor = processor.apply_preprocessing(
-            image_tensor, args.blur, args.sharpen, args.clahe, args.grayscale
+            image_tensor, args.blur, args.sharpen, args.clahe, args.grayscale, args.quantize
         )
 
         patches, grid_shape, strides = processor.extract_patches(

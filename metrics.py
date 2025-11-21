@@ -10,6 +10,14 @@ class MetricStrategy:
         """
         raise NotImplementedError
 
+    def compute_pairs(self, patches_a: torch.Tensor, patches_b: torch.Tensor) -> torch.Tensor:
+        """
+        Computes distance between corresponding pairs in two batches.
+        Input: patches_a (B, ...), patches_b (B, ...)
+        Output: Distances (B,)
+        """
+        raise NotImplementedError
+
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:
         """
         Returns a feature vector representation for K-Means clustering.
@@ -70,6 +78,46 @@ class SSIMMetric(MetricStrategy):
         # Distance = 1 - Similarity
         return 1.0 - (contrast_structure * color_sim)
 
+    def compute_pairs(self, patches_a: torch.Tensor, patches_b: torch.Tensor) -> torch.Tensor:
+        """
+        Pairwise SSIM Distance (1 - SSIM) for corresponding elements.
+        """
+        N, C, H, W = patches_a.shape
+
+        # Flatten spatial dims: (N, C, H*W)
+        x = patches_a.reshape(N, C, -1)
+        y = patches_b.reshape(N, C, -1)
+
+        # Means
+        mu_x = x.mean(dim=2)  # (N, C)
+        mu_y = y.mean(dim=2)
+
+        # Centered
+        x_centered = x - mu_x.unsqueeze(2)
+        y_centered = y - mu_y.unsqueeze(2)
+
+        # Variances / Covariance
+        # Flatten C: (N, C*H*W) to treat structure globally across channels
+        flat_x = x_centered.reshape(N, -1)
+        flat_y = y_centered.reshape(N, -1)
+
+        # Element-wise dot product for covariance terms
+        D = H * W * C
+        sig_xy = (flat_x * flat_y).sum(dim=1) / D
+        sig_xx = (flat_x * flat_x).sum(dim=1) / D
+        sig_yy = (flat_y * flat_y).sum(dim=1) / D
+
+        # Structure term
+        C2 = 0.03**2
+        structure = (2 * sig_xy + C2) / (sig_xx + sig_yy + C2)
+
+        # Color term (Cosine Similarity of means)
+        mu_x_norm = torch.linalg.norm(mu_x, dim=1) + 1e-8
+        mu_y_norm = torch.linalg.norm(mu_y, dim=1) + 1e-8
+        color_sim = (mu_x * mu_y).sum(dim=1) / (mu_x_norm * mu_y_norm)
+
+        return 1.0 - (structure * color_sim)
+
 
 class CIELabMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
@@ -105,6 +153,14 @@ class CIELabMetric(MetricStrategy):
         # We will use Root Mean Square Error (RMSE) equivalent here.
 
         return dists / (H * W) ** 0.5
+
+    def compute_pairs(self, patches_a: torch.Tensor, patches_b: torch.Tensor) -> torch.Tensor:
+        # Feature extraction
+        fa = self.get_features(patches_a)  # (B, D)
+        fb = self.get_features(patches_b)  # (B, D)
+        H, W = patches_a.shape[2], patches_a.shape[3]
+        # Euclidean distance row-wise + Normalize
+        return torch.linalg.norm(fa - fb, dim=1) / (H * W) ** 0.5
 
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -193,6 +249,11 @@ class LabMomentsMetric(CIELabMetric):
 
         return dists
 
+    def compute_pairs(self, patches_a: torch.Tensor, patches_b: torch.Tensor) -> torch.Tensor:
+        fa = self.get_features(patches_a)
+        fb = self.get_features(patches_b)
+        return torch.linalg.norm(fa - fb, dim=1)
+
 
 class TextureColorMetric(CIELabMetric):
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:
@@ -248,6 +309,14 @@ class TextureColorMetric(CIELabMetric):
 
         return (features - f_mean) / f_std
 
+    def compute_pairs(self, patches_a: torch.Tensor, patches_b: torch.Tensor) -> torch.Tensor:
+        # Compute features on combined batch to ensure consistent statistics if Z-score used
+        N = patches_a.shape[0]
+        combined = torch.cat([patches_a, patches_b], dim=0)
+        feats = self.get_features(combined)
+        # Split back
+        return torch.linalg.norm(feats[:N] - feats[N:], dim=1)
+
 
 class GradientColorMetric(CIELabMetric):
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:
@@ -296,6 +365,12 @@ class GradientColorMetric(CIELabMetric):
         f_std = features.std(dim=0, keepdim=True) + 1e-8
 
         return (features - f_mean) / f_std
+
+    def compute_pairs(self, patches_a: torch.Tensor, patches_b: torch.Tensor) -> torch.Tensor:
+        N = patches_a.shape[0]
+        combined = torch.cat([patches_a, patches_b], dim=0)
+        feats = self.get_features(combined)
+        return torch.linalg.norm(feats[:N] - feats[N:], dim=1)
 
 
 class HistogramMetric(CIELabMetric):
@@ -350,3 +425,8 @@ class HistogramMetric(CIELabMetric):
         hist_features = hist_features / (H * W)
 
         return hist_features
+
+    def compute_pairs(self, patches_a: torch.Tensor, patches_b: torch.Tensor) -> torch.Tensor:
+        fa = self.get_features(patches_a)
+        fb = self.get_features(patches_b)
+        return torch.linalg.norm(fa - fb, dim=1)
