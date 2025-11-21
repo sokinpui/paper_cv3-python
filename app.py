@@ -44,7 +44,7 @@ except Exception as e:
     device = torch.device("cpu")
 
 
-def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe):
+def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe, grayscale):
     """
     Lightweight function to generate a preview of the pre-processing.
     Returns: (Modal Update, Image)
@@ -61,7 +61,7 @@ def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe):
             image_tensor, float(brightness), float(contrast)
         )
         image_tensor = processor.apply_preprocessing(
-            image_tensor, float(blur), float(sharpen), float(clahe)
+            image_tensor, float(blur), float(sharpen), float(clahe), grayscale
         )
 
         img_np = image_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
@@ -87,6 +87,7 @@ def run_analysis(
     blur,
     sharpen,
     clahe,
+    grayscale,
     action_mode,
 ):
     """
@@ -111,7 +112,7 @@ def run_analysis(
 
         # 1.6 Preprocessing (Blur, Sharpen, CLAHE)
         image_tensor = processor.apply_preprocessing(
-            image_tensor, float(blur), float(sharpen), float(clahe)
+            image_tensor, float(blur), float(sharpen), float(clahe), grayscale
         )
 
         # 2. Tile
@@ -317,6 +318,9 @@ def create_ui(input_dir=None):
                         step=0.5,
                         label="CLAHE (Texture)",
                     )
+                
+                with gr.Row():
+                    grayscale_input = gr.Checkbox(value=False, label="Convert to Grayscale")
 
                 with gr.Row():
                     cluster_method_input = gr.Dropdown(
@@ -374,6 +378,7 @@ def create_ui(input_dir=None):
             blur_input,
             sharpen_input,
             clahe_input,
+            grayscale_input,
         ]
         common_outputs = metric_outputs + [json_output, perf_output]
 
@@ -404,7 +409,7 @@ def create_ui(input_dir=None):
         # Preview Button Logic
         preview_inputs = [
             img_input, brightness_input, contrast_input, 
-            blur_input, sharpen_input, clahe_input
+            blur_input, sharpen_input, clahe_input, grayscale_input
         ]
         btn_preview.click(
             fn=generate_preview,

@@ -46,12 +46,13 @@ class ImageProcessor:
         blur_radius: float = 0.0,
         sharpen_factor: float = 0.0,
         clahe_limit: float = 0.0,
+        grayscale: bool = False,
     ) -> torch.Tensor:
         """
         Applies advanced CV preprocessing for texture analysis.
-        Includes: Gaussian Blur (Denoise), Unsharp Mask (Sharpen), CLAHE (Local Contrast).
+        Includes: Grayscale, Gaussian Blur (Denoise), Unsharp Mask (Sharpen), CLAHE (Local Contrast).
         """
-        if blur_radius <= 0 and sharpen_factor <= 0 and clahe_limit <= 0:
+        if blur_radius <= 0 and sharpen_factor <= 0 and clahe_limit <= 0 and not grayscale:
             return image
 
         # Move to CPU/Numpy for OpenCV operations
@@ -64,6 +65,11 @@ class ImageProcessor:
         img_np = img_t.permute(1, 2, 0).cpu().numpy()
         # Convert to [0, 255] uint8 for OpenCV
         img_cv = (img_np * 255).clip(0, 255).astype(np.uint8)
+
+        # 0. Grayscale
+        if grayscale:
+            img_gray = cv2.cvtColor(img_cv, cv2.COLOR_RGB2GRAY)
+            img_cv = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2RGB)
 
         # 1. Gaussian Blur (Reduce Fabric Grain/Noise)
         if blur_radius > 0:

@@ -82,6 +82,11 @@ def main():
         default=0.0,
         help="CLAHE limit (0.0 to 5.0) for local contrast",
     )
+    parser.add_argument(
+        "--grayscale",
+        action="store_true",
+        help="Convert image to grayscale before processing",
+    )
 
     args = parser.parse_args()
 
@@ -133,7 +138,7 @@ def main():
 
         # Advanced Texture Preprocessing
         image_tensor = processor.apply_preprocessing(
-            image_tensor, args.blur, args.sharpen, args.clahe
+            image_tensor, args.blur, args.sharpen, args.clahe, args.grayscale
         )
 
         patches, grid_shape = processor.extract_patches(
