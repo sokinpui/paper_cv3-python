@@ -19,7 +19,21 @@ from metrics import (
 )
 from processor import ImageProcessor
 
-# 1. Initialize CUDA Device once
+# Compatibility for older Gradio versions (Pre-5.0)
+if not hasattr(gr, "Modal"):
+    print("Warning: Gradio version does not support Modals. Falling back to inline Group.")
+    gr.Modal = gr.Group
+
+# 0. Configuration
+METRICS_CONFIG = [
+    ("SSIM (Structure)", SSIMMetric),
+    ("Gradient & Color (Lines)", GradientColorMetric),
+    ("Texture & Color (Defects)", TextureColorMetric),
+    ("Color Histogram", HistogramMetric),
+    ("LAB Moments (Color Stats)", LabMomentsMetric),
+]
+
+# 1. Initialize CUDA Device
 try:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(
@@ -30,11 +44,39 @@ except Exception as e:
     device = torch.device("cpu")
 
 
+def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe):
+    """
+    Lightweight function to generate a preview of the pre-processing.
+    Returns: (Modal Update, Image)
+    """
+    if image_path is None:
+        return gr.update(visible=False), None
+
+    try:
+        processor = ImageProcessor(device)
+        image_tensor = processor.load_image(image_path)
+        
+        # Adjustments
+        image_tensor = processor.adjust_image(
+            image_tensor, float(brightness), float(contrast)
+        )
+        image_tensor = processor.apply_preprocessing(
+            image_tensor, float(blur), float(sharpen), float(clahe)
+        )
+
+        img_np = image_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        img_np = (img_np * 255).clip(0, 255).astype("uint8")
+
+        return gr.update(visible=True), img_np
+    except Exception as e:
+        print(f"Preview Error: {e}")
+        return gr.update(visible=False), None
+
+
 def run_analysis(
     image_path,
     height,
     width,
-    metric_name,
     top_n,
     sort_by,
     descending,
@@ -58,20 +100,6 @@ def run_analysis(
         # Setup Components
         processor = ImageProcessor(device)
 
-        if metric_name == "SSIM (Structure)":
-            metric = SSIMMetric()
-        elif metric_name == "Texture & Color (Defects)":
-            metric = TextureColorMetric()
-        elif metric_name == "Gradient & Color (Lines/Defects)":
-            metric = GradientColorMetric()
-        elif metric_name == "Color Histogram":
-            metric = HistogramMetric()
-        else:
-            # Fallback / Default
-            metric = LabMomentsMetric()
-
-        analyzer = PatchAnalyzer(metric)
-
         # Pipeline
         # 1. Load
         image_tensor = processor.load_image(image_path)
@@ -85,17 +113,6 @@ def run_analysis(
         image_tensor = processor.apply_preprocessing(
             image_tensor, float(blur), float(sharpen), float(clahe)
         )
-
-        if action_mode == "preview":
-            # Just return the adjusted image for visualization
-            img_np = image_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-            img_np = (img_np * 255).clip(0, 255).astype("uint8")
-            return (
-                img_np,
-                None,
-                None,
-                "### 🖼️ Preview Mode\nImage adjusted with Brightness/Contrast.",
-            )
 
         # 2. Tile
         patches, grid_shape = processor.extract_patches(
@@ -113,42 +130,52 @@ def run_analysis(
             actual_top_n = int(top_n)
 
         if action_mode == "cluster":
+            # For clustering, we pick a robust default metric (Texture usually best for grouping)
+            metric = TextureColorMetric()
+            analyzer = PatchAnalyzer(metric)
             labels = analyzer.cluster(patches, int(n_clusters), method=cluster_method)
 
             result_image = processor.create_cluster_heatmap(
                 image_tensor, labels, grid_shape, int(height), int(width)
             )
-            matrix_image = None
 
-            # Performance stats for clustering
             t_det_end = time.time()
-            det_duration = t_det_end - t_det_start
-
             perf_text = (
                 f"### 🧩 Clustering Metrics\n"
-                f"- **Time:** {det_duration:.4f} s\n"
+                f"- **Time:** {t_det_end - t_det_start:.4f} s\n"
                 f"- **Units:** {patches.shape[0]}\n"
                 f"- **Clusters:** {n_clusters}\n"
                 f"- **Method:** {cluster_method.title()}"
             )
 
-            return result_image, None, json.dumps(labels), perf_text
+            # Clustering only has one result image. We put it in the first slot.
+            outputs = [result_image, None] + [None] * (len(METRICS_CONFIG) * 2 - 2)
+            return tuple(outputs + [json.dumps(labels), perf_text])
 
-        stats = analyzer.analyze(
-            patches,
-            grid_shape,
-            top_n=actual_top_n,
-            sort_by=sort_by,
-            ascending=not descending,
-        )
+        # --- Multi-Metric Detection Loop ---
+        all_image_outputs = []
+        all_stats_collection = []
 
-        result_image = processor.get_annotated_rgb(
-            image_tensor, stats, int(height), int(width)
-        )
+        for name, MetricClass in METRICS_CONFIG:
+            # Instantiate and Analyze
+            metric = MetricClass()
+            analyzer = PatchAnalyzer(metric)
 
-        matrix_image = None
-        if action_mode == "matrix":
-            matrix_image = processor.create_heatmap(
+            stats = analyzer.analyze(
+                patches,
+                grid_shape,
+                top_n=actual_top_n,
+                sort_by=sort_by,
+                ascending=not descending,
+            )
+
+            # 1. Detection Image
+            det_img = processor.get_annotated_rgb(
+                image_tensor, stats, int(height), int(width)
+            )
+
+            # 2. Heatmap Image
+            heatmap_img = processor.create_heatmap(
                 image_tensor,
                 stats,
                 grid_shape,
@@ -157,36 +184,44 @@ def run_analysis(
                 stat_name=sort_by,
             )
 
+            all_image_outputs.append(det_img)
+            all_image_outputs.append(heatmap_img)
+
+            # Keep top 1 stat for JSON just to show something valid
+            all_stats_collection.extend([s.to_dict() for s in stats[:1]])
+
         t_det_end = time.time()
         det_duration = t_det_end - t_det_start
-
-        # Clear GPU cache before running PaddleSeg to avoid OOM/Lag
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
         # Performance Stats
         N = patches.shape[0]
         total_pairs = N * N
-        cps = total_pairs / det_duration if det_duration > 0 else 0
+        # multiplied by number of metrics
+        cps = (
+            (total_pairs * len(METRICS_CONFIG)) / det_duration
+            if det_duration > 0
+            else 0
+        )
 
         perf_text = (
             f"### ⚡ Performance Metrics\n"
-            f"- **Detection Time (End-to-End):** {det_duration:.4f} s\n"
-            f"- **Total Units:** {N} (Grid: {grid_shape})\n"
-            f"- **Total Comparisons:** {total_pairs:,}\n"
-            f"- **Detection Throughput:** {cps:,.0f} pairs/sec"
+            f"- **Detection Time (All Metrics):** {det_duration:.4f} s\n"
+            f"- **Total Units:** {N}\n"
+            f"- **Throughput:** {cps:,.0f} pairs/sec"
         )
 
-        # 6. Format JSON result
-        json_result = json.dumps([u.to_dict() for u in stats], indent=4)
+        # We just dump the first metric's stats to JSON to save space, or a summary
+        json_result = json.dumps(all_stats_collection[:actual_top_n], indent=4)
 
-        return result_image, matrix_image, json_result, perf_text
+        return tuple(all_image_outputs + [json_result, perf_text])
 
     except Exception as e:
         import traceback
 
         traceback.print_exc()
-        return None, None, f"Error: {str(e)}", ""
+        # Return list of Nones matching output count
+        count = len(METRICS_CONFIG) * 2
+        return tuple([None] * count + [f"Error: {str(e)}", ""])
 
 
 # --- Build the UI ---
@@ -199,6 +234,15 @@ def create_ui(input_dir=None):
             "Upload an image to find significant/unique blocks using CUDA acceleration."
         )
 
+        # --- Popup Preview Modal ---
+        with gr.Modal(visible=False) as preview_modal:
+            gr.Markdown("### 🖼️ Pre-processing Preview")
+            with gr.Row():
+                preview_image = gr.Image(label="Processed Image", type="numpy", interactive=False)
+            
+            btn_close_preview = gr.Button("Close Preview")
+            btn_close_preview.click(lambda: gr.update(visible=False), None, preview_modal)
+
         with gr.Row():
             with gr.Column(scale=1):
                 # Action Buttons
@@ -206,7 +250,7 @@ def create_ui(input_dir=None):
                     btn_run = gr.Button("🚀 Top N", variant="primary")
                     btn_all = gr.Button("👀 All Units")
                     btn_matrix = gr.Button("📊 Matrix")
-                    btn_cluster = gr.Button("🧩 Cluster")
+                    btn_cluster = gr.Button("🧩 Cluster (Texture)")
                     btn_preview = gr.Button("🖼️ Preview")
 
                 gr.Markdown("### Settings")
@@ -267,20 +311,12 @@ def create_ui(input_dir=None):
                         minimum=0.0, maximum=2.0, value=0.0, step=0.1, label="Sharpen"
                     )
                     clahe_input = gr.Slider(
-                        minimum=0.0, maximum=5.0, value=0.0, step=0.5, label="CLAHE (Texture)"
+                        minimum=0.0,
+                        maximum=5.0,
+                        value=0.0,
+                        step=0.5,
+                        label="CLAHE (Texture)",
                     )
-
-                metric_input = gr.Radio(
-                    choices=[
-                        "SSIM (Structure)",
-                        "Gradient & Color (Lines/Defects)",
-                        "Texture & Color (Defects)",
-                        "Color Histogram",
-                        "LAB Moments (Color Stats)",
-                    ],
-                    value="SSIM (Structure)",
-                    label="Comparison Metric",
-                )
 
                 with gr.Row():
                     cluster_method_input = gr.Dropdown(
@@ -308,11 +344,17 @@ def create_ui(input_dir=None):
                     value=True, label="Sort Descending (High Score = Significant)"
                 )
 
-            with gr.Column(scale=2):
-                # Outputs
-                with gr.Row():
-                    img_output = gr.Image(label="My Detection (Unit Stats)")
-                    matrix_output = gr.Image(label="Score Matrix Heatmap")
+            with gr.Column(scale=3):
+                gr.Markdown("### 📊 Analysis Results (Metric by Metric)")
+
+                # Dynamically create output rows for each metric
+                metric_outputs = []
+                for name, _ in METRICS_CONFIG:
+                    gr.Markdown(f"**{name}**")
+                    with gr.Row():
+                        m_det = gr.Image(label=f"Detection ({name})", type="numpy")
+                        m_map = gr.Image(label=f"Heatmap ({name})", type="numpy")
+                        metric_outputs.extend([m_det, m_map])
 
                 perf_output = gr.Markdown()
                 json_output = gr.Code(language="json", label="Statistics")
@@ -322,7 +364,6 @@ def create_ui(input_dir=None):
             img_input,
             h_input,
             w_input,
-            metric_input,
             top_n_input,
             sort_input,
             desc_input,
@@ -334,7 +375,7 @@ def create_ui(input_dir=None):
             sharpen_input,
             clahe_input,
         ]
-        common_outputs = [img_output, matrix_output, json_output, perf_output]
+        common_outputs = metric_outputs + [json_output, perf_output]
 
         btn_run.click(
             fn=run_analysis,
@@ -360,10 +401,15 @@ def create_ui(input_dir=None):
             outputs=common_outputs,
         )
 
+        # Preview Button Logic
+        preview_inputs = [
+            img_input, brightness_input, contrast_input, 
+            blur_input, sharpen_input, clahe_input
+        ]
         btn_preview.click(
-            fn=run_analysis,
-            inputs=common_inputs + [gr.State("preview")],
-            outputs=common_outputs,
+            fn=generate_preview,
+            inputs=preview_inputs,
+            outputs=[preview_modal, preview_image],
         )
     return demo
 
