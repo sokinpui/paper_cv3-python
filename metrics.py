@@ -9,6 +9,13 @@ class MetricStrategy:
         """
         raise NotImplementedError
 
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Returns a feature vector representation for K-Means clustering.
+        Default: Flattened raw patches (N, C*H*W).
+        """
+        return patches.view(patches.shape[0], -1)
+
 class SSIMMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -18,88 +25,48 @@ class SSIMMetric(MetricStrategy):
         # Flatten spatial dims: (N, C, H*W)
         N, C, H, W = patches.shape
         x = patches.view(N, C, -1)
-
-        # Mean: (N, C, 1)
-        mu = x.mean(dim=2, keepdim=True)
-        # Centered: (N, C, H*W)
-        x_centered = x - mu
-        # Variance: (N, C, 1)
-        sigma2 = (x_centered ** 2).mean(dim=2, keepdim=True)
-        sigma = torch.sqrt(sigma2)
-
-        # Prepare for broadcasting
-        # A: (N, 1, C, 1), B: (1, N, C, 1)
-        mu_A = mu.unsqueeze(1)
-        mu_B = mu.unsqueeze(0)
-        sigma2_A = sigma2.unsqueeze(1)
-        sigma2_B = sigma2.unsqueeze(0)
-        sigma_A = sigma.unsqueeze(1)
-        sigma_B = sigma.unsqueeze(0)
-
-        # Covariance calculation via matrix multiplication
-        # (N, C, L) @ (N, C, L).T is too big if we do naive.
-        # Instead, we compute covariance pairwise.
-        # Cov(A, B) = Mean((A-muA)(B-muB))
-
-        # Optimization: Use simplified SSIM constants
-        C1 = 0.01 ** 2
-        C2 = 0.03 ** 2
-
-        # Luminance term
-        l_num = (2 * mu_A * mu_B + C1)
-        l_den = (mu_A ** 2 + mu_B ** 2 + C1)
-
-        # Contrast term (partially combined with structure in standard formula)
-        # We need covariance for the full formula.
-        # For efficiency in N*N, we approximate or compute dot product.
-
-        # Reshape for dot product: (N, C*H*W)
-        flat = x_centered.view(N, -1)
-        # Covariance matrix (N, N) scaled by 1/L
-        cov_matrix = (flat @ flat.T) / (H * W)
-        # Reshape to (N, N, 1) to match C dimension logic if needed,
-        # but SSIM is usually per channel then averaged.
-
-        # Let's stick to the standard structure term using the precomputed variances
-        # This implementation assumes we average over channels at the end
-
-        # Re-calculating Covariance properly for broadcasting
-        # This is memory intensive for huge N.
-        # We use the property: Cov(X,Y) = E[XY] - E[X]E[Y]
-
-        # E[XY]
-        flat_raw = x.view(N, -1)
-        exy = (flat_raw @ flat_raw.T) / (H * W) # (N, N)
-
-        # E[X]E[Y]
-        # mu is (N, C, 1). Average over C for global patch mean or keep C?
-        # Standard SSIM is per channel.
-
-        # To keep it fast and robust on GPU for N^2:
-        # We will treat the patch as a vector for structural comparison.
-
-        # Vectorized SSIM (approximate for speed on N^2)
-        # SSIM(x, y) = (2*mu_x*mu_y + C1)(2*sig_xy + C2) / ((mu_x^2+mu_y^2+C1)(sig_x^2+sig_y^2+C2))
-
-        # We need to average over channels (C)
-        mu_flat = mu.mean(dim=1).squeeze() # (N)
-        sigma2_flat = sigma2.mean(dim=1).squeeze() # (N)
-
-        mu_x = mu_flat.unsqueeze(1) # (N, 1)
-        mu_y = mu_flat.unsqueeze(0) # (1, N)
-        sig2_x = sigma2_flat.unsqueeze(1)
-        sig2_y = sigma2_flat.unsqueeze(0)
-
-        # Covariance (averaged over channels)
-        # (N, C*H*W)
+        
+        # --- 1. Calculate Statistics ---
+        # Mean per channel: (N, C)
+        mu = x.mean(dim=2)
+        
+        # Centered data: (N, C, H*W)
+        x_centered = x - mu.unsqueeze(2)
+        
+        # Flatten C into the vector for Structure correlation (N, C*H*W)
+        # This ensures we check spatial structure across all channels
         flat_centered = x_centered.view(N, -1)
+        
+        # Covariance Matrix (N, N)
+        # sig_xy = E[(x-mux)(y-muy)]
         sig_xy = (flat_centered @ flat_centered.T) / (H * W * C)
+        
+        # Variance (Diagonal of Covariance)
+        sig2 = sig_xy.diag().unsqueeze(1) # (N, 1)
+        sig2_x = sig2
+        sig2_y = sig2.T
 
-        luminance = (2 * mu_x * mu_y + C1) / (mu_x**2 + mu_y**2 + C1)
+        # --- 2. Structure & Contrast Term ---
+        C2 = 0.03 ** 2
         contrast_structure = (2 * sig_xy + C2) / (sig2_x + sig2_y + C2)
 
-        ssim_map = luminance * contrast_structure
-        return 1.0 - ssim_map
+        # --- 3. Color Term (Cosine Similarity) ---
+        # Compares the "Direction" of the Mean Vector (Color ratios).
+        # Ignores "Magnitude" (Brightness/Shadows).
+        # If RGB is used, this distinguishes R vs G vs B while treating Dark Red == Bright Red.
+        
+        # Normalize mean vectors (N, C)
+        mu_norm = torch.linalg.norm(mu, dim=1, keepdim=True) + 1e-8
+        mu_dir = mu / mu_norm
+        
+        # Cosine Similarity (N, N) -> Range [0, 1] for non-negative RGB
+        color_sim = mu_dir @ mu_dir.T
+        
+        # --- 4. Combine ---
+        # Combined Similarity = Structure * Color
+        # Both terms are roughly [0, 1].
+        # Distance = 1 - Similarity
+        return 1.0 - (contrast_structure * color_sim)
 
 class CIELabMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
@@ -107,26 +74,16 @@ class CIELabMetric(MetricStrategy):
         Computes Delta E (Euclidean distance in Lab space).
         Input assumed to be normalized RGB [0, 1].
         """
-        lab = self._rgb_to_lab(patches)
-
-        # Discard the 'L' (Lightness) channel. 
-        # lab is (N, 3, H, W). Channel 0 is L, 1 is a, 2 is b.
-        # We only keep channels 1 and 2 (a and b).
-        lab = lab[:, 1:, :, :]
-
-
-        # Flatten to (N, Features)
-        # We want the average color difference per pixel or total difference?
-        # Usually mean delta E per pixel.
-        N, C, H, W = lab.shape
-        flat = lab.view(N, C, -1).permute(0, 2, 1).reshape(N * H * W, C)
+        lab = self.get_features(patches)
+        N = patches.shape[0]
+        H, W = patches.shape[2], patches.shape[3]
 
         # Calculating pairwise distance for (N, C, H, W) is heavy if we do pixel-to-pixel exact match.
         # Assumption: We compare Unit X to Unit Y.
         # Distance = Mean Euclidean distance between corresponding pixels.
 
         # Reshape: (N, D) where D = C*H*W
-        flat_vec = lab.view(N, -1)
+        flat_vec = lab.view(N, -1) # This is already flat if coming from get_features?
 
         # Euclidean Distance Matrix: ||A - B|| = sqrt(||A||^2 + ||B||^2 - 2<A,B>)
         # This computes distance between the flattened vectors.
@@ -143,6 +100,16 @@ class CIELabMetric(MetricStrategy):
         # We will use Root Mean Square Error (RMSE) equivalent here.
 
         return dists / (H * W)**0.5
+
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Returns flattened Lab image data (channels a and b only).
+        """
+        lab = self._rgb_to_lab(patches)
+        # Keep only a, b (indices 1, 2) as per original logic
+        lab = lab[:, 1:, :, :]
+        # Return flattened (N, -1)
+        return lab.view(patches.shape[0], -1)
 
     def _rgb_to_lab(self, image: torch.Tensor) -> torch.Tensor:
         # RGB to XYZ
@@ -183,10 +150,10 @@ class CIELabMetric(MetricStrategy):
         return torch.stack([l_chan, a_chan, b_chan], dim=1)
 
 class LabMomentsMetric(CIELabMetric):
-    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
         """
-        Computes distance based on Statistical Color Moments (Mean & StdDev).
-        More robust to noise and slight spatial shifts than pixel-wise difference.
+        Extracts (N, 6) feature vectors: [L_mu, a_mu, b_mu, L_std, a_std, b_std]
+        Weighted for distance calculation.
         """
         # 1. Convert to Lab: (N, 3, H, W)
         lab = self._rgb_to_lab(patches)
@@ -208,6 +175,10 @@ class LabMomentsMetric(CIELabMetric):
         # Indices: 0=L_mu, 1=a_mu, 2=b_mu, 3=L_std, 4=a_std, 5=b_std
         weights = torch.tensor([0.5, 2.0, 2.0, 0.5, 1.0, 1.0], device=patches.device)
         features = features * weights
+        return features
+
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        features = self.get_features(patches)
 
         # 5. Compute Pairwise Euclidean Distance on the Feature Vectors
         # Input: (N, 6)
@@ -215,3 +186,47 @@ class LabMomentsMetric(CIELabMetric):
         dists = torch.cdist(features, features, p=2)
 
         return dists
+
+class TextureColorMetric(CIELabMetric):
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Extracts robust features for anomaly detection on uniform surfaces.
+        1. Texture: Gradient Magnitude (Edges/Scratches) - Robust to smooth lighting.
+        2. Color: 'a' and 'b' channels - Robust to shadows.
+        3. Complexity: Std Dev of Gradient.
+        """
+        # 1. Convert to Lab (N, 3, H, W)
+        lab = self._rgb_to_lab(patches)
+        l_chan = lab[:, 0:1, :, :] # (N, 1, H, W)
+        ab_chan = lab[:, 1:, :, :] # (N, 2, H, W)
+
+        # 2. Compute Gradients on L channel (Sobel)
+        kx = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], device=patches.device).view(1, 1, 3, 3).float()
+        ky = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], device=patches.device).view(1, 1, 3, 3).float()
+
+        # Padding 1 to keep size
+        gx = F.conv2d(l_chan, kx, padding=1)
+        gy = F.conv2d(l_chan, ky, padding=1)
+        grad_mag = torch.sqrt(gx**2 + gy**2 + 1e-8) # (N, 1, H, W)
+
+        # 3. Pool Features
+        # Texture Energy (Mean Gradient) - Detects lines/scratches
+        feat_grad_mean = grad_mag.mean(dim=(2, 3)) # (N, 1)
+        # Texture Complexity (Std Gradient)
+        feat_grad_std = grad_mag.std(dim=(2, 3))   # (N, 1)
+        
+        # Color (Mean a, Mean b) - Detects stains/discoloration
+        # We ignore L mean to be robust to shadows/vignetting
+        feat_color_mean = ab_chan.mean(dim=(2, 3)) # (N, 2)
+        feat_color_std = ab_chan.std(dim=(2, 3))   # (N, 2)
+
+        # Concatenate: (N, 6)
+        features = torch.cat([feat_grad_mean, feat_grad_std, feat_color_mean, feat_color_std], dim=1)
+
+        # 4. Z-Score Normalization
+        # This ensures that "Edge Energy" and "Color Shift" are comparable, 
+        # preventing one from dominating due to arbitrary scale.
+        f_mean = features.mean(dim=0, keepdim=True)
+        f_std = features.std(dim=0, keepdim=True) + 1e-8
+        
+        return (features - f_mean) / f_std

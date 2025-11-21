@@ -9,7 +9,7 @@ import gradio as gr
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric
+from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric, TextureColorMetric
 from processor import ImageProcessor
 
 # 1. Initialize CUDA Device once
@@ -33,6 +33,7 @@ def run_analysis(
     descending,
     use_local,
     n_clusters,
+    cluster_method,
     action_mode,
 ):
     """
@@ -48,8 +49,10 @@ def run_analysis(
 
         if metric_name == "SSIM (Structure)":
             metric = SSIMMetric()
+        elif metric_name == "Texture & Color (Defects)":
+            metric = TextureColorMetric()
         else:
-            # Use the new Moments metric instead of raw Pixel CIELab
+            # Fallback / Default
             metric = LabMomentsMetric()
 
         analyzer = PatchAnalyzer(metric)
@@ -77,7 +80,7 @@ def run_analysis(
         radius = 1 if use_local else None
 
         if action_mode == "cluster":
-            labels = analyzer.cluster(patches, int(n_clusters))
+            labels = analyzer.cluster(patches, int(n_clusters), method=cluster_method)
             
             result_image = processor.create_cluster_heatmap(
                 image_tensor, labels, grid_shape, int(height), int(width)
@@ -92,7 +95,8 @@ def run_analysis(
                 f"### 🧩 Clustering Metrics\n"
                 f"- **Time:** {det_duration:.4f} s\n"
                 f"- **Units:** {patches.shape[0]}\n"
-                f"- **Clusters:** {n_clusters}"
+                f"- **Clusters:** {n_clusters}\n"
+                f"- **Method:** {cluster_method.title()}"
             )
             
             return result_image, None, json.dumps(labels), perf_text
@@ -202,12 +206,17 @@ def create_ui(input_dir=None):
                     w_input = gr.Number(value=200, label="Unit Width", precision=0)
 
                 metric_input = gr.Radio(
-                    choices=["SSIM (Structure)", "LAB Moments (Color Stats)"],
+                    choices=["SSIM (Structure)", "Texture & Color (Defects)", "LAB Moments (Color Stats)"],
                     value="SSIM (Structure)",
                     label="Comparison Metric",
                 )
 
-                n_cluster_input = gr.Slider(minimum=2, maximum=20, step=1, value=3, label="Number of Clusters")
+                with gr.Row():
+                    cluster_method_input = gr.Dropdown(
+                        choices=["hierarchical", "kmeans"], value="hierarchical", label="Cluster Method"
+                    )
+                    n_cluster_input = gr.Slider(minimum=2, maximum=20, step=1, value=3, label="Number of Clusters")
+
 
                 with gr.Row():
                     top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
@@ -246,6 +255,7 @@ def create_ui(input_dir=None):
             desc_input,
             local_input,
             n_cluster_input,
+            cluster_method_input,
         ]
         common_outputs = [img_output, matrix_output, json_output, perf_output]
 

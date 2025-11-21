@@ -5,7 +5,7 @@ import sys
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric
+from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric, TextureColorMetric
 from processor import ImageProcessor
 
 
@@ -18,7 +18,7 @@ def main():
         "--metric",
         "-m",
         type=str,
-        choices=["ssim", "cielab", "moments"],
+        choices=["ssim", "cielab", "moments", "texture"],
         default="ssim",
         help="Comparison metric",
     )
@@ -71,6 +71,8 @@ def main():
         metric = SSIMMetric()
     elif args.metric == "moments":
         metric = LabMomentsMetric()
+    elif args.metric == "texture":
+        metric = TextureColorMetric()
     else:
         metric = CIELabMetric()
 
