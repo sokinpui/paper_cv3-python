@@ -22,6 +22,12 @@ def main():
     parser.add_argument("--height", type=int, required=True, help="Unit Height")
     parser.add_argument("--width", type=int, required=True, help="Unit Width")
     parser.add_argument(
+        "--overlap",
+        type=float,
+        default=0.0,
+        help="Overlap ratio between patches (0.0 to 0.9)",
+    )
+    parser.add_argument(
         "--metric",
         "-m",
         type=str,
@@ -141,8 +147,8 @@ def main():
             image_tensor, args.blur, args.sharpen, args.clahe, args.grayscale
         )
 
-        patches, grid_shape = processor.extract_patches(
-            image_tensor, args.height, args.width
+        patches, grid_shape, strides = processor.extract_patches(
+            image_tensor, args.height, args.width, args.overlap
         )
 
         print(f"Extracted {patches.shape[0]} units. Grid: {grid_shape}")
@@ -163,7 +169,7 @@ def main():
         # 5. Visualization
         if args.output:
             processor.save_annotated_image(
-                image_tensor, top_units, args.height, args.width, args.output
+                image_tensor, top_units, args.height, args.width, grid_shape, strides, args.output
             )
 
     except Exception as e:

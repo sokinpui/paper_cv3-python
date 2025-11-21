@@ -106,13 +106,14 @@ class ImageProcessor:
         return tensor.to(self.device)
 
     def extract_patches(
-        self, image: torch.Tensor, unit_h: int, unit_w: int
-    ) -> Tuple[torch.Tensor, Tuple[int, int]]:
+        self, image: torch.Tensor, unit_h: int, unit_w: int, overlap_ratio: float = 0.0
+    ) -> Tuple[torch.Tensor, Tuple[int, int], Tuple[int, int]]:
         """
         Divides image into non-overlapping patches.
         Returns:
             patches: (N, C, unit_h, unit_w)
             grid_shape: (rows, cols)
+            strides: (stride_h, stride_w)
         """
         B, C, H, W = image.shape
 
@@ -121,32 +122,44 @@ class ImageProcessor:
                 f"Image size ({H}x{W}) is smaller than unit size ({unit_h}x{unit_w})"
             )
 
-        # Calculate grid size
-        rows = H // unit_h + (1 if H % unit_h != 0 else 0)
-        cols = W // unit_w + (1 if W % unit_w != 0 else 0)
+        # Calculate strides based on overlap
+        stride_h = int(unit_h * (1.0 - overlap_ratio))
+        stride_w = int(unit_w * (1.0 - overlap_ratio))
+
+        # Ensure at least 1 pixel stride
+        stride_h = max(1, stride_h)
+        stride_w = max(1, stride_w)
+
+        # Generate coordinates
+        # We ensure the last patch ends exactly at the image edge (back-shifted if needed)
+        y_coords = []
+        y = 0
+        while y + unit_h <= H:
+            y_coords.append(y)
+            y += stride_h
+        if y_coords[-1] + unit_h < H:
+            y_coords.append(H - unit_h)
+
+        x_coords = []
+        x = 0
+        while x + unit_w <= W:
+            x_coords.append(x)
+            x += stride_w
+        if x_coords[-1] + unit_w < W:
+            x_coords.append(W - unit_w)
 
         patches_list = []
-        for r in range(rows):
-            for c in range(cols):
-                # Calculate y with back-shift for last row
-                if r == rows - 1 and H % unit_h != 0:
-                    y = H - unit_h
-                else:
-                    y = r * unit_h
-
-                # Calculate x with back-shift for last col
-                if c == cols - 1 and W % unit_w != 0:
-                    x = W - unit_w
-                else:
-                    x = c * unit_w
-
-                # Extract (B, C, unit_h, unit_w)
+        for y in y_coords:
+            for x in x_coords:
                 patches_list.append(image[..., y : y + unit_h, x : x + unit_w])
 
         # Stack to (N, C, H, W) assuming B=1. If B>1, this flattens batches to N.
         patches = torch.cat(patches_list, dim=0)
 
-        return patches, (rows, cols)
+        rows = len(y_coords)
+        cols = len(x_coords)
+
+        return patches, (rows, cols), (stride_h, stride_w)
 
     def _draw_annotations(
         self,
@@ -154,6 +167,8 @@ class ImageProcessor:
         units: list,
         unit_h: int,
         unit_w: int,
+        grid_shape: Tuple[int, int],
+        strides: Tuple[int, int],
         is_bgr: bool = False,
     ):
         """
@@ -162,14 +177,25 @@ class ImageProcessor:
         box_color = (0, 255, 0)  # Green
         text_color = (0, 0, 255) if is_bgr else (255, 0, 0)  # Red
 
+        rows, cols = grid_shape
+        stride_h, stride_w = strides
         H, W = img.shape[:2]
 
         for i, unit in enumerate(units):
             r, c = unit.row, unit.col
 
-            # Calculate coords with back-shift logic (clamped to image bounds)
-            y = min(r * unit_h, H - unit_h)
-            x = min(c * unit_w, W - unit_w)
+            # Calculate coords:
+            # If it's the last row/col, it is back-shifted to align with edge.
+            # Otherwise it follows the stride.
+            if r == rows - 1:
+                y = H - unit_h
+            else:
+                y = r * stride_h
+
+            if c == cols - 1:
+                x = W - unit_w
+            else:
+                x = c * stride_w
 
             # Draw Rectangle (Individual)
             cv2.rectangle(img, (x, y), (x + unit_w, y + unit_h), box_color, 2)
@@ -191,6 +217,8 @@ class ImageProcessor:
         units: list,
         unit_h: int,
         unit_w: int,
+        grid_shape: Tuple[int, int],
+        strides: Tuple[int, int],
         output_path: str,
     ):
         """
@@ -208,13 +236,14 @@ class ImageProcessor:
         img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
         img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        self._draw_annotations(img_np, units, unit_h, unit_w, is_bgr=True)
+        self._draw_annotations(img_np, units, unit_h, unit_w, grid_shape, strides, is_bgr=True)
 
         cv2.imwrite(output_path, img_np)
         print(f"Annotated image saved to {output_path}")
 
     def get_annotated_rgb(
-        self, image: torch.Tensor, units: list, unit_h: int, unit_w: int
+        self, image: torch.Tensor, units: list, unit_h: int, unit_w: int,
+        grid_shape: Tuple[int, int], strides: Tuple[int, int]
     ) -> np.ndarray:
         """
         Returns the annotated image as an RGB numpy array for Web UI display.
@@ -229,7 +258,7 @@ class ImageProcessor:
         # Make writable copy
         img_out = img_np.copy()
 
-        self._draw_annotations(img_out, units, unit_h, unit_w, is_bgr=False)
+        self._draw_annotations(img_out, units, unit_h, unit_w, grid_shape, strides, is_bgr=False)
 
         return img_out
 
@@ -238,6 +267,7 @@ class ImageProcessor:
         image: torch.Tensor,
         units: list,
         grid_shape: Tuple[int, int],
+        strides: Tuple[int, int],
         unit_h: int,
         unit_w: int,
         stat_name: str = "mean",
@@ -256,6 +286,7 @@ class ImageProcessor:
 
         overlay = img_np.copy()
         rows, cols = grid_shape
+        stride_h, stride_w = strides
 
         # Extract scores for normalization
         # We assume units contains all units for the grid
@@ -287,8 +318,15 @@ class ImageProcessor:
                     n = (norm - 0.5) * 2
                     r_val, g_val, b_val = int(255 * n), int(255 * (1 - n)), 0
 
-                y = min(r * unit_h, H - unit_h)
-                x = min(c * unit_w, W - unit_w)
+                if r == rows - 1:
+                    y = H - unit_h
+                else:
+                    y = r * stride_h
+
+                if c == cols - 1:
+                    x = W - unit_w
+                else:
+                    x = c * stride_w
 
                 # Draw filled rectangle
                 cv2.rectangle(

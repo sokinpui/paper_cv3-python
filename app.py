@@ -21,7 +21,9 @@ from processor import ImageProcessor
 
 # Compatibility for older Gradio versions (Pre-5.0)
 if not hasattr(gr, "Modal"):
-    print("Warning: Gradio version does not support Modals. Falling back to inline Group.")
+    print(
+        "Warning: Gradio version does not support Modals. Falling back to inline Group."
+    )
     gr.Modal = gr.Group
 
 # 0. Configuration
@@ -55,7 +57,7 @@ def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe, gra
     try:
         processor = ImageProcessor(device)
         image_tensor = processor.load_image(image_path)
-        
+
         # Adjustments
         image_tensor = processor.adjust_image(
             image_tensor, float(brightness), float(contrast)
@@ -86,6 +88,7 @@ def run_analysis(
     sharpen,
     clahe,
     grayscale,
+    overlap,
     action_mode,
 ):
     """
@@ -121,8 +124,8 @@ def run_analysis(
         )
 
         # 2. Tile
-        patches, grid_shape = processor.extract_patches(
-            image_tensor, int(height), int(width)
+        patches, grid_shape, strides = processor.extract_patches(
+            image_tensor, int(height), int(width), float(overlap)
         )
 
         # 3. Analyze & Annotate (Detection Phase)
@@ -154,7 +157,7 @@ def run_analysis(
 
             # 1. Detection Image
             det_img = processor.get_annotated_rgb(
-                image_tensor, stats, int(height), int(width)
+                image_tensor, stats, int(height), int(width), grid_shape, strides
             )
 
             # 2. Heatmap Image
@@ -162,6 +165,7 @@ def run_analysis(
                 image_tensor,
                 stats,
                 grid_shape,
+                strides,
                 int(height),
                 int(width),
                 stat_name=sort_by,
@@ -189,9 +193,11 @@ def run_analysis(
 
             # Keep top 1 stat for JSON just to show something valid
             all_stats_collection.extend([s.to_dict() for s in stats[:1]])
-            
+
             # Update JSON (accumulated)
-            current_outputs[-1] = json.dumps(all_stats_collection[:actual_top_n], indent=4)
+            current_outputs[-1] = json.dumps(
+                all_stats_collection[:actual_top_n], indent=4
+            )
 
             # Yield current state
             yield tuple(current_outputs)
@@ -219,10 +225,14 @@ def create_ui(input_dir=None):
         with gr.Modal(visible=False) as preview_modal:
             gr.Markdown("### 🖼️ Pre-processing Preview")
             with gr.Row():
-                preview_image = gr.Image(label="Processed Image", type="numpy", interactive=False)
-            
+                preview_image = gr.Image(
+                    label="Processed Image", type="numpy", interactive=False
+                )
+
             btn_close_preview = gr.Button("Close Preview")
-            btn_close_preview.click(lambda: gr.update(visible=False), None, preview_modal)
+            btn_close_preview.click(
+                lambda: gr.update(visible=False), None, preview_modal
+            )
 
         with gr.Row():
             with gr.Column(scale=1):
@@ -268,6 +278,15 @@ def create_ui(input_dir=None):
                     w_input = gr.Number(value=200, label="Unit Width", precision=0)
 
                 with gr.Row():
+                    overlap_input = gr.Slider(
+                        minimum=0.0,
+                        maximum=0.9,
+                        value=0.0,
+                        step=0.05,
+                        label="Overlap Ratio",
+                    )
+
+                with gr.Row():
                     brightness_input = gr.Slider(
                         minimum=-0.5,
                         maximum=0.5,
@@ -297,9 +316,11 @@ def create_ui(input_dir=None):
                         step=0.5,
                         label="CLAHE (Texture)",
                     )
-                
+
                 with gr.Row():
-                    grayscale_input = gr.Checkbox(value=False, label="Convert to Grayscale")
+                    grayscale_input = gr.Checkbox(
+                        value=False, label="Convert to Grayscale"
+                    )
 
                 with gr.Row():
                     top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
@@ -343,6 +364,7 @@ def create_ui(input_dir=None):
             sharpen_input,
             clahe_input,
             grayscale_input,
+            overlap_input,
         ]
         common_outputs = metric_outputs + [json_output]
 
@@ -366,8 +388,13 @@ def create_ui(input_dir=None):
 
         # Preview Button Logic
         preview_inputs = [
-            img_input, brightness_input, contrast_input, 
-            blur_input, sharpen_input, clahe_input, grayscale_input
+            img_input,
+            brightness_input,
+            contrast_input,
+            blur_input,
+            sharpen_input,
+            clahe_input,
+            grayscale_input,
         ]
         btn_preview.click(
             fn=generate_preview,
