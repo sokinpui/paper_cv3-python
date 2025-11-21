@@ -113,3 +113,25 @@ class PatchAnalyzer:
         results.sort(key=lambda x: getattr(x, sort_by), reverse=not ascending)
 
         return results[:top_n]
+
+    def cluster(self, patches: torch.Tensor, n_clusters: int) -> List[int]:
+        """
+        Groups patches into n_clusters based on the metric distance.
+        Returns a list of cluster labels corresponding to patches.
+        """
+        try:
+            from sklearn.cluster import AgglomerativeClustering
+        except ImportError:
+            raise ImportError("scikit-learn is required for clustering.")
+
+        matrix = self.metric.compute(patches)
+        matrix.fill_diagonal_(0)
+        dist_matrix = matrix.detach().cpu().numpy()
+
+        try:
+            model = AgglomerativeClustering(n_clusters=n_clusters, metric='precomputed', linkage='average')
+        except TypeError:
+            model = AgglomerativeClustering(n_clusters=n_clusters, affinity='precomputed', linkage='average')
+            
+        labels = model.fit_predict(dist_matrix)
+        return labels.tolist()

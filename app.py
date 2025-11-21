@@ -32,6 +32,7 @@ def run_analysis(
     sort_by,
     descending,
     use_local,
+    n_clusters,
     action_mode,
 ):
     """
@@ -74,6 +75,27 @@ def run_analysis(
 
         # Local Neighbor Radius: 1 means 3x3 window. None means Global.
         radius = 1 if use_local else None
+
+        if action_mode == "cluster":
+            labels = analyzer.cluster(patches, int(n_clusters))
+            
+            result_image = processor.create_cluster_heatmap(
+                image_tensor, labels, grid_shape, int(height), int(width)
+            )
+            matrix_image = None
+            
+            # Performance stats for clustering
+            t_det_end = time.time()
+            det_duration = t_det_end - t_det_start
+            
+            perf_text = (
+                f"### 🧩 Clustering Metrics\n"
+                f"- **Time:** {det_duration:.4f} s\n"
+                f"- **Units:** {patches.shape[0]}\n"
+                f"- **Clusters:** {n_clusters}"
+            )
+            
+            return result_image, None, json.dumps(labels), perf_text
 
         stats = analyzer.analyze(
             patches,
@@ -143,6 +165,7 @@ def create_ui(input_dir=None):
                     btn_run = gr.Button("🚀 Top N", variant="primary")
                     btn_all = gr.Button("👀 All Units")
                     btn_matrix = gr.Button("📊 Matrix")
+                    btn_cluster = gr.Button("🧩 Cluster")
 
                 gr.Markdown("### Settings")
 
@@ -184,6 +207,8 @@ def create_ui(input_dir=None):
                     label="Comparison Metric",
                 )
 
+                n_cluster_input = gr.Slider(minimum=2, maximum=20, step=1, value=3, label="Number of Clusters")
+
                 with gr.Row():
                     top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
                     sort_input = gr.Dropdown(
@@ -220,6 +245,7 @@ def create_ui(input_dir=None):
             sort_input,
             desc_input,
             local_input,
+            n_cluster_input,
         ]
         common_outputs = [img_output, matrix_output, json_output, perf_output]
 
@@ -238,6 +264,12 @@ def create_ui(input_dir=None):
         btn_matrix.click(
             fn=run_analysis,
             inputs=common_inputs + [gr.State("matrix")],
+            outputs=common_outputs,
+        )
+
+        btn_cluster.click(
+            fn=run_analysis,
+            inputs=common_inputs + [gr.State("cluster")],
             outputs=common_outputs,
         )
     return demo
