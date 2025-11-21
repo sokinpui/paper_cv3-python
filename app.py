@@ -9,7 +9,14 @@ import gradio as gr
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric, TextureColorMetric, GradientColorMetric, HistogramMetric
+from metrics import (
+    CIELabMetric,
+    GradientColorMetric,
+    HistogramMetric,
+    LabMomentsMetric,
+    SSIMMetric,
+    TextureColorMetric,
+)
 from processor import ImageProcessor
 
 # 1. Initialize CUDA Device once
@@ -31,9 +38,10 @@ def run_analysis(
     top_n,
     sort_by,
     descending,
-    use_local,
     n_clusters,
     cluster_method,
+    brightness,
+    contrast,
     action_mode,
 ):
     """
@@ -65,6 +73,22 @@ def run_analysis(
         # 1. Load
         image_tensor = processor.load_image(image_path)
 
+        # 1.5 Adjust Image (Brightness/Contrast)
+        image_tensor = processor.adjust_image(
+            image_tensor, float(brightness), float(contrast)
+        )
+
+        if action_mode == "preview":
+            # Just return the adjusted image for visualization
+            img_np = image_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            img_np = (img_np * 255).clip(0, 255).astype("uint8")
+            return (
+                img_np,
+                None,
+                None,
+                "### 🖼️ Preview Mode\nImage adjusted with Brightness/Contrast.",
+            )
+
         # 2. Tile
         patches, grid_shape = processor.extract_patches(
             image_tensor, int(height), int(width)
@@ -80,21 +104,18 @@ def run_analysis(
         else:
             actual_top_n = int(top_n)
 
-        # Local Neighbor Radius: 1 means 3x3 window. None means Global.
-        radius = 1 if use_local else None
-
         if action_mode == "cluster":
             labels = analyzer.cluster(patches, int(n_clusters), method=cluster_method)
-            
+
             result_image = processor.create_cluster_heatmap(
                 image_tensor, labels, grid_shape, int(height), int(width)
             )
             matrix_image = None
-            
+
             # Performance stats for clustering
             t_det_end = time.time()
             det_duration = t_det_end - t_det_start
-            
+
             perf_text = (
                 f"### 🧩 Clustering Metrics\n"
                 f"- **Time:** {det_duration:.4f} s\n"
@@ -102,7 +123,7 @@ def run_analysis(
                 f"- **Clusters:** {n_clusters}\n"
                 f"- **Method:** {cluster_method.title()}"
             )
-            
+
             return result_image, None, json.dumps(labels), perf_text
 
         stats = analyzer.analyze(
@@ -111,7 +132,6 @@ def run_analysis(
             top_n=actual_top_n,
             sort_by=sort_by,
             ascending=not descending,
-            neighbor_radius=radius,
         )
 
         result_image = processor.get_annotated_rgb(
@@ -121,7 +141,12 @@ def run_analysis(
         matrix_image = None
         if action_mode == "matrix":
             matrix_image = processor.create_heatmap(
-                image_tensor, stats, grid_shape, int(height), int(width), stat_name=sort_by
+                image_tensor,
+                stats,
+                grid_shape,
+                int(height),
+                int(width),
+                stat_name=sort_by,
             )
 
         t_det_end = time.time()
@@ -174,6 +199,7 @@ def create_ui(input_dir=None):
                     btn_all = gr.Button("👀 All Units")
                     btn_matrix = gr.Button("📊 Matrix")
                     btn_cluster = gr.Button("🧩 Cluster")
+                    btn_preview = gr.Button("🖼️ Preview")
 
                 gr.Markdown("### Settings")
 
@@ -209,13 +235,25 @@ def create_ui(input_dir=None):
                     h_input = gr.Number(value=200, label="Unit Height", precision=0)
                     w_input = gr.Number(value=200, label="Unit Width", precision=0)
 
+                with gr.Row():
+                    brightness_input = gr.Slider(
+                        minimum=-0.5,
+                        maximum=0.5,
+                        value=0.0,
+                        step=0.05,
+                        label="Brightness",
+                    )
+                    contrast_input = gr.Slider(
+                        minimum=0.5, maximum=3.0, value=1.0, step=0.1, label="Contrast"
+                    )
+
                 metric_input = gr.Radio(
                     choices=[
-                        "SSIM (Structure)", 
+                        "SSIM (Structure)",
                         "Gradient & Color (Lines/Defects)",
-                        "Texture & Color (Defects)", 
+                        "Texture & Color (Defects)",
                         "Color Histogram",
-                        "LAB Moments (Color Stats)"
+                        "LAB Moments (Color Stats)",
                     ],
                     value="SSIM (Structure)",
                     label="Comparison Metric",
@@ -223,10 +261,17 @@ def create_ui(input_dir=None):
 
                 with gr.Row():
                     cluster_method_input = gr.Dropdown(
-                        choices=["hierarchical", "kmeans"], value="hierarchical", label="Cluster Method"
+                        choices=["hierarchical", "kmeans"],
+                        value="hierarchical",
+                        label="Cluster Method",
                     )
-                    n_cluster_input = gr.Slider(minimum=2, maximum=20, step=1, value=3, label="Number of Clusters")
-
+                    n_cluster_input = gr.Slider(
+                        minimum=2,
+                        maximum=20,
+                        step=1,
+                        value=3,
+                        label="Number of Clusters",
+                    )
 
                 with gr.Row():
                     top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
@@ -238,11 +283,6 @@ def create_ui(input_dir=None):
 
                 desc_input = gr.Checkbox(
                     value=True, label="Sort Descending (High Score = Significant)"
-                )
-
-                local_input = gr.Checkbox(
-                    value=False,
-                    label="Local Comparison Only (Best for Line/Edge Defects)",
                 )
 
             with gr.Column(scale=2):
@@ -263,9 +303,10 @@ def create_ui(input_dir=None):
             top_n_input,
             sort_input,
             desc_input,
-            local_input,
             n_cluster_input,
             cluster_method_input,
+            brightness_input,
+            contrast_input,
         ]
         common_outputs = [img_output, matrix_output, json_output, perf_output]
 
@@ -290,6 +331,12 @@ def create_ui(input_dir=None):
         btn_cluster.click(
             fn=run_analysis,
             inputs=common_inputs + [gr.State("cluster")],
+            outputs=common_outputs,
+        )
+
+        btn_preview.click(
+            fn=run_analysis,
+            inputs=common_inputs + [gr.State("preview")],
             outputs=common_outputs,
         )
     return demo

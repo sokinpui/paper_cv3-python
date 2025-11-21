@@ -5,7 +5,14 @@ import sys
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric, TextureColorMetric, GradientColorMetric, HistogramMetric
+from metrics import (
+    CIELabMetric,
+    GradientColorMetric,
+    HistogramMetric,
+    LabMomentsMetric,
+    SSIMMetric,
+    TextureColorMetric,
+)
 from processor import ImageProcessor
 
 
@@ -40,15 +47,22 @@ def main():
         help="Sort ascending (default descending)",
     )
     parser.add_argument(
-        "--local",
-        action="store_true",
-        help="Compare units only to immediate neighbors (radius=1)",
-    )
-    parser.add_argument(
         "--output",
         "-o",
         type=str,
         help="Path to save annotated image (e.g., output.png)",
+    )
+    parser.add_argument(
+        "--brightness",
+        type=float,
+        default=0.0,
+        help="Adjust brightness (-1.0 to 1.0)",
+    )
+    parser.add_argument(
+        "--contrast",
+        type=float,
+        default=1.0,
+        help="Adjust contrast (0.0 to 3.0)",
     )
 
     args = parser.parse_args()
@@ -89,6 +103,15 @@ def main():
     try:
         print("Loading and tiling image...")
         image_tensor = processor.load_image(args.image_path)
+
+        if args.brightness != 0.0 or args.contrast != 1.0:
+            print(
+                f"Adjusting image: Brightness={args.brightness}, Contrast={args.contrast}"
+            )
+            image_tensor = processor.adjust_image(
+                image_tensor, args.brightness, args.contrast
+            )
+
         patches, grid_shape = processor.extract_patches(
             image_tensor, args.height, args.width
         )
@@ -96,15 +119,12 @@ def main():
         print(f"Extracted {patches.shape[0]} units. Grid: {grid_shape}")
         print("Computing pairwise matrix and statistics...")
 
-        radius = 1 if args.local else None
-
         top_units = analyzer.analyze(
             patches,
             grid_shape,
             top_n=args.top_n,
             sort_by=args.sort_by,
             ascending=ascending,
-            neighbor_radius=radius,
         )
 
         # 4. Output

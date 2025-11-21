@@ -1,6 +1,6 @@
+import colorsys
 from typing import List, Tuple
 
-import colorsys
 import cv2
 import numpy as np
 import torch
@@ -24,6 +24,22 @@ class ImageProcessor:
         tensor = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0)
         return tensor.to(self.device)
 
+    def adjust_image(
+        self, image: torch.Tensor, brightness: float, contrast: float
+    ) -> torch.Tensor:
+        """
+        Adjusts brightness and contrast of the image tensor.
+        image: (B, C, H, W) in [0, 1]
+        brightness: offset [-1.0, 1.0], default 0.0
+        contrast: multiplier [0.0, 3.0], default 1.0
+        """
+        if brightness == 0.0 and contrast == 1.0:
+            return image
+
+        # Apply contrast (centered at 0.5) and brightness
+        image = (image - 0.5) * contrast + 0.5 + brightness
+        return torch.clamp(image, 0.0, 1.0)
+
     def extract_patches(
         self, image: torch.Tensor, unit_h: int, unit_w: int
     ) -> Tuple[torch.Tensor, Tuple[int, int]]:
@@ -36,7 +52,9 @@ class ImageProcessor:
         B, C, H, W = image.shape
 
         if H < unit_h or W < unit_w:
-            raise ValueError(f"Image size ({H}x{W}) is smaller than unit size ({unit_h}x{unit_w})")
+            raise ValueError(
+                f"Image size ({H}x{W}) is smaller than unit size ({unit_h}x{unit_w})"
+            )
 
         # Calculate grid size
         rows = H // unit_h + (1 if H % unit_h != 0 else 0)
@@ -50,13 +68,13 @@ class ImageProcessor:
                     y = H - unit_h
                 else:
                     y = r * unit_h
-                
+
                 # Calculate x with back-shift for last col
                 if c == cols - 1 and W % unit_w != 0:
                     x = W - unit_w
                 else:
                     x = c * unit_w
-                
+
                 # Extract (B, C, unit_h, unit_w)
                 patches_list.append(image[..., y : y + unit_h, x : x + unit_w])
 
@@ -83,7 +101,7 @@ class ImageProcessor:
 
         for i, unit in enumerate(units):
             r, c = unit.row, unit.col
-            
+
             # Calculate coords with back-shift logic (clamped to image bounds)
             y = min(r * unit_h, H - unit_h)
             x = min(c * unit_w, W - unit_w)
@@ -232,11 +250,11 @@ class ImageProcessor:
         img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
         H, W = img_np.shape[:2]
         overlay = img_np.copy()
-        
+
         rows, cols = grid_shape
         unique_labels = sorted(list(set(labels)))
         n_clusters = len(unique_labels)
-        
+
         # Generate colors
         colors = []
         for i in range(n_clusters):

@@ -1,6 +1,8 @@
-import torch
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import Dict, List
+
+import torch
+
 
 @dataclass
 class UnitStats:
@@ -16,14 +18,21 @@ class UnitStats:
     def to_dict(self):
         return self.__dict__
 
+
 class PatchAnalyzer:
     def __init__(self, metric_strategy):
         self.metric = metric_strategy
 
-    def analyze(self, patches: torch.Tensor, grid_shape: tuple, top_n: int, sort_by: str = 'mean', ascending: bool = True, neighbor_radius: int = None) -> List[UnitStats]:
+    def analyze(
+        self,
+        patches: torch.Tensor,
+        grid_shape: tuple,
+        top_n: int,
+        sort_by: str = "mean",
+        ascending: bool = True,
+    ) -> List[UnitStats]:
         """
         patches: (N, C, H, W)
-        neighbor_radius: If provided, limits comparison to spatial neighbors within this radius (Chebyshev distance).
         """
         N = patches.shape[0]
         if N < 2:
@@ -36,25 +45,7 @@ class PatchAnalyzer:
         # 2. Mask diagonal (self-comparison) to avoid skewing stats
         # We set diagonal to NaN so we can ignore it in stats
         mask = torch.eye(N, device=patches.device).bool()
-        matrix.masked_fill_(mask, float('nan'))
-
-        # 2.1 Apply Spatial Mask (Optional: Local Contrast)
-        if neighbor_radius is not None and neighbor_radius > 0:
-            rows, cols = grid_shape
-            # Generate grid coordinates (N, 2)
-            # r: [0, 0, ..., 1, 1, ...]
-            # c: [0, 1, ..., 0, 1, ...]
-            r_idx = torch.arange(rows, device=patches.device).view(-1, 1).repeat(1, cols).view(-1)
-            c_idx = torch.arange(cols, device=patches.device).view(1, -1).repeat(rows, 1).view(-1)
-            
-            # Compute pairwise spatial distance (Chebyshev: max(|dx|, |dy|))
-            # We use broadcasting: (N, 1) - (1, N)
-            dist_r = torch.abs(r_idx.unsqueeze(1) - r_idx.unsqueeze(0))
-            dist_c = torch.abs(c_idx.unsqueeze(1) - c_idx.unsqueeze(0))
-            spatial_dist = torch.maximum(dist_r, dist_c)
-            
-            spatial_mask = spatial_dist > neighbor_radius
-            matrix.masked_fill_(spatial_mask, float('nan'))
+        matrix.masked_fill_(mask, float("nan"))
 
         # 3. Calculate Statistics per Unit (Row-wise)
         # Clone to avoid modifying matrix for subsequent steps if needed
@@ -67,7 +58,7 @@ class PatchAnalyzer:
         # Count valid comparisons per unit (row)
         # When using local radius, this varies (corners < center).
         valid_counts = (~torch.isnan(data)).sum(dim=1)
-        
+
         # 1. Mean
         means = torch.nanmean(data, dim=1)
 
@@ -88,8 +79,8 @@ class PatchAnalyzer:
 
         # 4. Min / Max
         # Fill NaNs with inf/-inf to ignore them in min/max reduction
-        mins = torch.nan_to_num(data, nan=float('inf')).min(dim=1).values
-        maxs = torch.nan_to_num(data, nan=float('-inf')).max(dim=1).values
+        mins = torch.nan_to_num(data, nan=float("inf")).min(dim=1).values
+        maxs = torch.nan_to_num(data, nan=float("-inf")).max(dim=1).values
 
         # 4. Aggregate results
         results = []
@@ -105,7 +96,7 @@ class PatchAnalyzer:
                 median=medians[i].item(),
                 std_dev=stds[i].item(),
                 min_score=mins[i].item(),
-                max_score=maxs[i].item()
+                max_score=maxs[i].item(),
             )
             results.append(stats)
 
@@ -114,7 +105,9 @@ class PatchAnalyzer:
 
         return results[:top_n]
 
-    def cluster(self, patches: torch.Tensor, n_clusters: int, method: str = 'hierarchical') -> List[int]:
+    def cluster(
+        self, patches: torch.Tensor, n_clusters: int, method: str = "hierarchical"
+    ) -> List[int]:
         """
         Groups patches into n_clusters based on the metric distance.
         Returns a list of cluster labels corresponding to patches.
@@ -125,12 +118,12 @@ class PatchAnalyzer:
         except ImportError:
             raise ImportError("scikit-learn is required for clustering.")
 
-        if method == 'kmeans':
+        if method == "kmeans":
             # K-Means uses features (N, Features)
             # Note: For SSIM, this falls back to flattened raw pixels which ignores structure.
             features = self.metric.get_features(patches)
             X = features.detach().cpu().numpy()
-            
+
             model = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
             labels = model.fit_predict(X)
         else:
@@ -140,10 +133,14 @@ class PatchAnalyzer:
             dist_matrix = matrix.detach().cpu().numpy()
 
             try:
-                model = AgglomerativeClustering(n_clusters=n_clusters, metric='precomputed', linkage='average')
+                model = AgglomerativeClustering(
+                    n_clusters=n_clusters, metric="precomputed", linkage="average"
+                )
             except TypeError:
-                model = AgglomerativeClustering(n_clusters=n_clusters, affinity='precomputed', linkage='average')
-            
+                model = AgglomerativeClustering(
+                    n_clusters=n_clusters, affinity="precomputed", linkage="average"
+                )
+
             labels = model.fit_predict(dist_matrix)
-            
+
         return labels.tolist()
