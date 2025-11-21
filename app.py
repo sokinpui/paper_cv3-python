@@ -9,7 +9,7 @@ import gradio as gr
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, SSIMMetric
+from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric
 from processor import ImageProcessor
 
 # 1. Initialize CUDA Device once
@@ -48,7 +48,8 @@ def run_analysis(
         if metric_name == "SSIM (Structure)":
             metric = SSIMMetric()
         else:
-            metric = CIELabMetric()
+            # Use the new Moments metric instead of raw Pixel CIELab
+            metric = LabMomentsMetric()
 
         analyzer = PatchAnalyzer(metric)
 
@@ -90,7 +91,7 @@ def run_analysis(
         matrix_image = None
         if action_mode == "matrix":
             matrix_image = processor.create_heatmap(
-                image_tensor, stats, grid_shape, int(height), int(width)
+                image_tensor, stats, grid_shape, int(height), int(width), stat_name=sort_by
             )
 
         t_det_end = time.time()
@@ -178,7 +179,7 @@ def create_ui(input_dir=None):
                     w_input = gr.Number(value=200, label="Unit Width", precision=0)
 
                 metric_input = gr.Radio(
-                    choices=["SSIM (Structure)", "CIELAB (Color)"],
+                    choices=["SSIM (Structure)", "LAB Moments (Color Stats)"],
                     value="SSIM (Structure)",
                     label="Comparison Metric",
                 )

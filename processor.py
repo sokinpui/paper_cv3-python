@@ -34,31 +34,33 @@ class ImageProcessor:
         """
         B, C, H, W = image.shape
 
-        # Pad if dimensions are not divisible by unit size
-        pad_h = (unit_h - H % unit_h) % unit_h
-        pad_w = (unit_w - W % unit_w) % unit_w
+        if H < unit_h or W < unit_w:
+            raise ValueError(f"Image size ({H}x{W}) is smaller than unit size ({unit_h}x{unit_w})")
 
-        if pad_h > 0 or pad_w > 0:
-            image = torch.nn.functional.pad(
-                image, (0, pad_w, 0, pad_h), mode="replicate"  # extend from edge color
-            )
+        # Calculate grid size
+        rows = H // unit_h + (1 if H % unit_h != 0 else 0)
+        cols = W // unit_w + (1 if W % unit_w != 0 else 0)
 
-        H_pad, W_pad = image.shape[2], image.shape[3]
+        patches_list = []
+        for r in range(rows):
+            for c in range(cols):
+                # Calculate y with back-shift for last row
+                if r == rows - 1 and H % unit_h != 0:
+                    y = H - unit_h
+                else:
+                    y = r * unit_h
+                
+                # Calculate x with back-shift for last col
+                if c == cols - 1 and W % unit_w != 0:
+                    x = W - unit_w
+                else:
+                    x = c * unit_w
+                
+                # Extract (B, C, unit_h, unit_w)
+                patches_list.append(image[..., y : y + unit_h, x : x + unit_w])
 
-        # Unfold to extract patches
-        # kernel_size=(unit_h, unit_w), stride=(unit_h, unit_w)
-        patches = torch.nn.functional.unfold(
-            image, kernel_size=(unit_h, unit_w), stride=(unit_h, unit_w)
-        )
-
-        # patches shape: (B, C*unit_h*unit_w, N_patches)
-        # Reshape to (N_patches, C, unit_h, unit_w)
-        patches = patches.transpose(1, 2).squeeze(0)
-        N_patches = patches.shape[0]
-        patches = patches.view(N_patches, C, unit_h, unit_w)
-
-        rows = H_pad // unit_h
-        cols = W_pad // unit_w
+        # Stack to (N, C, H, W) assuming B=1. If B>1, this flattens batches to N.
+        patches = torch.cat(patches_list, dim=0)
 
         return patches, (rows, cols)
 
@@ -76,9 +78,14 @@ class ImageProcessor:
         box_color = (0, 255, 0)  # Green
         text_color = (0, 0, 255) if is_bgr else (255, 0, 0)  # Red
 
+        H, W = img.shape[:2]
+
         for i, unit in enumerate(units):
             r, c = unit.row, unit.col
-            y, x = r * unit_h, c * unit_w
+            
+            # Calculate coords with back-shift logic (clamped to image bounds)
+            y = min(r * unit_h, H - unit_h)
+            x = min(c * unit_w, W - unit_w)
 
             # Draw Rectangle (Individual)
             cv2.rectangle(img, (x, y), (x + unit_w, y + unit_h), box_color, 2)
@@ -149,6 +156,7 @@ class ImageProcessor:
         grid_shape: Tuple[int, int],
         unit_h: int,
         unit_w: int,
+        stat_name: str = "mean",
     ) -> np.ndarray:
         """
         Creates a heatmap overlay based on the 'mean' score of each unit.
@@ -160,13 +168,14 @@ class ImageProcessor:
         # RGB Numpy
         img_np = image.detach().permute(1, 2, 0).cpu().numpy()
         img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
+        H, W = img_np.shape[:2]
 
         overlay = img_np.copy()
         rows, cols = grid_shape
 
         # Extract scores for normalization
         # We assume units contains all units for the grid
-        scores = [u.mean for u in units]
+        scores = [getattr(u, stat_name) for u in units]
         if not scores:
             return img_np
 
@@ -181,7 +190,8 @@ class ImageProcessor:
                     continue
 
                 u = unit_map[(r, c)]
-                norm = (u.mean - min_s) / rng
+                val = getattr(u, stat_name)
+                norm = (val - min_s) / rng
 
                 # Color mapping: Blue (Low) -> Green -> Red (High)
                 if norm < 0.5:
@@ -193,7 +203,9 @@ class ImageProcessor:
                     n = (norm - 0.5) * 2
                     r_val, g_val, b_val = int(255 * n), int(255 * (1 - n)), 0
 
-                y, x = r * unit_h, c * unit_w
+                y = min(r * unit_h, H - unit_h)
+                x = min(c * unit_w, W - unit_w)
+
                 # Draw filled rectangle
                 cv2.rectangle(
                     overlay, (x, y), (x + unit_w, y + unit_h), (r_val, g_val, b_val), -1

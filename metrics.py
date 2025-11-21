@@ -181,3 +181,37 @@ class CIELabMetric(MetricStrategy):
         b_chan = 200 * (y - z)
 
         return torch.stack([l_chan, a_chan, b_chan], dim=1)
+
+class LabMomentsMetric(CIELabMetric):
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes distance based on Statistical Color Moments (Mean & StdDev).
+        More robust to noise and slight spatial shifts than pixel-wise difference.
+        """
+        # 1. Convert to Lab: (N, 3, H, W)
+        lab = self._rgb_to_lab(patches)
+        
+        # 2. Compute Moments per channel -> (N, 3)
+        # Mean: Average color
+        means = lab.mean(dim=(2, 3))
+        
+        # Std: Color variation (Texture/Contrast)
+        stds = lab.std(dim=(2, 3))
+        
+        # 3. Concatenate to form Feature Vector: (N, 6)
+        # Vector: [L_mu, a_mu, b_mu, L_sigma, a_sigma, b_sigma]
+        features = torch.cat([means, stds], dim=1)
+
+        # 4. Weighting (Optional but recommended)
+        # We want to penalize 'a' and 'b' (Color) differences more than 'L' (Lightness)
+        # to ignore lighting gradients (shadows).
+        # Indices: 0=L_mu, 1=a_mu, 2=b_mu, 3=L_std, 4=a_std, 5=b_std
+        weights = torch.tensor([0.5, 2.0, 2.0, 0.5, 1.0, 1.0], device=patches.device)
+        features = features * weights
+
+        # 5. Compute Pairwise Euclidean Distance on the Feature Vectors
+        # Input: (N, 6)
+        # Output: (N, N)
+        dists = torch.cdist(features, features, p=2)
+
+        return dists

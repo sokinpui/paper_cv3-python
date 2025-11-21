@@ -5,7 +5,7 @@ import sys
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, SSIMMetric
+from metrics import CIELabMetric, SSIMMetric, LabMomentsMetric
 from processor import ImageProcessor
 
 
@@ -18,7 +18,7 @@ def main():
         "--metric",
         "-m",
         type=str,
-        choices=["ssim", "cielab"],
+        choices=["ssim", "cielab", "moments"],
         default="ssim",
         help="Comparison metric",
     )
@@ -67,7 +67,13 @@ def main():
     # 2. Initialize Components
     processor = ImageProcessor(device)
 
-    metric = SSIMMetric() if args.metric == "ssim" else CIELabMetric()
+    if args.metric == "ssim":
+        metric = SSIMMetric()
+    elif args.metric == "moments":
+        metric = LabMomentsMetric()
+    else:
+        metric = CIELabMetric()
+
     # Both metrics now use High Score = Different. Default sort is Descending (False).
     ascending = args.ascending
 
