@@ -80,8 +80,6 @@ def run_analysis(
     top_n,
     sort_by,
     descending,
-    n_clusters,
-    cluster_method,
     brightness,
     contrast,
     blur,
@@ -129,29 +127,6 @@ def run_analysis(
             actual_top_n = 999999
         else:
             actual_top_n = int(top_n)
-
-        if action_mode == "cluster":
-            # For clustering, we pick a robust default metric (Texture usually best for grouping)
-            metric = TextureColorMetric()
-            analyzer = PatchAnalyzer(metric)
-            labels = analyzer.cluster(patches, int(n_clusters), method=cluster_method)
-
-            result_image = processor.create_cluster_heatmap(
-                image_tensor, labels, grid_shape, int(height), int(width)
-            )
-
-            t_det_end = time.time()
-            perf_text = (
-                f"### 🧩 Clustering Metrics\n"
-                f"- **Time:** {t_det_end - t_det_start:.4f} s\n"
-                f"- **Units:** {patches.shape[0]}\n"
-                f"- **Clusters:** {n_clusters}\n"
-                f"- **Method:** {cluster_method.title()}"
-            )
-
-            # Clustering only has one result image. We put it in the first slot.
-            outputs = [result_image, None] + [None] * (len(METRICS_CONFIG) * 2 - 2)
-            return tuple(outputs + [json.dumps(labels), perf_text])
 
         # --- Multi-Metric Detection Loop ---
         all_image_outputs = []
@@ -251,7 +226,6 @@ def create_ui(input_dir=None):
                     btn_run = gr.Button("🚀 Top N", variant="primary")
                     btn_all = gr.Button("👀 All Units")
                     btn_matrix = gr.Button("📊 Matrix")
-                    btn_cluster = gr.Button("🧩 Cluster (Texture)")
                     btn_preview = gr.Button("🖼️ Preview")
 
                 gr.Markdown("### Settings")
@@ -323,20 +297,6 @@ def create_ui(input_dir=None):
                     grayscale_input = gr.Checkbox(value=False, label="Convert to Grayscale")
 
                 with gr.Row():
-                    cluster_method_input = gr.Dropdown(
-                        choices=["hierarchical", "kmeans"],
-                        value="hierarchical",
-                        label="Cluster Method",
-                    )
-                    n_cluster_input = gr.Slider(
-                        minimum=2,
-                        maximum=20,
-                        step=1,
-                        value=3,
-                        label="Number of Clusters",
-                    )
-
-                with gr.Row():
                     top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
                     sort_input = gr.Dropdown(
                         choices=["mean", "median", "std_dev", "min_score", "max_score"],
@@ -371,8 +331,6 @@ def create_ui(input_dir=None):
             top_n_input,
             sort_input,
             desc_input,
-            n_cluster_input,
-            cluster_method_input,
             brightness_input,
             contrast_input,
             blur_input,
@@ -397,12 +355,6 @@ def create_ui(input_dir=None):
         btn_matrix.click(
             fn=run_analysis,
             inputs=common_inputs + [gr.State("matrix")],
-            outputs=common_outputs,
-        )
-
-        btn_cluster.click(
-            fn=run_analysis,
-            inputs=common_inputs + [gr.State("cluster")],
             outputs=common_outputs,
         )
 

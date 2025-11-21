@@ -1,4 +1,3 @@
-import colorsys
 from typing import List, Tuple
 
 import cv2
@@ -298,45 +297,5 @@ class ImageProcessor:
 
         # Alpha blend
         alpha = 0.6
-        cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
-        return img_np
-
-    def create_cluster_heatmap(
-        self,
-        image: torch.Tensor,
-        labels: List[int],
-        grid_shape: Tuple[int, int],
-        unit_h: int,
-        unit_w: int,
-    ) -> np.ndarray:
-        if image.dim() == 4:
-            image = image.squeeze(0)
-
-        img_np = image.detach().permute(1, 2, 0).cpu().numpy()
-        img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
-        H, W = img_np.shape[:2]
-        overlay = img_np.copy()
-
-        rows, cols = grid_shape
-        unique_labels = sorted(list(set(labels)))
-        n_clusters = len(unique_labels)
-
-        # Generate colors
-        colors = []
-        for i in range(n_clusters):
-            hue = i / max(n_clusters, 1)
-            rgb = colorsys.hsv_to_rgb(hue, 0.8, 0.9)
-            colors.append(tuple(int(c * 255) for c in rgb))
-
-        for i, label in enumerate(labels):
-            r, c = divmod(i, cols)
-            y = min(r * unit_h, H - unit_h)
-            x = min(c * unit_w, W - unit_w)
-            color = colors[label % len(colors)]
-            # OpenCV uses BGR
-            bgr = (color[2], color[1], color[0])
-            cv2.rectangle(overlay, (x, y), (x + unit_w, y + unit_h), bgr, -1)
-
-        alpha = 0.5
         cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
         return img_np
