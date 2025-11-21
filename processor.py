@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -152,3 +152,65 @@ class ImageProcessor:
         self._draw_annotations(img_out, units, unit_h, unit_w, is_bgr=False)
 
         return img_out
+
+    def create_heatmap(
+        self,
+        image: torch.Tensor,
+        units: list,
+        grid_shape: Tuple[int, int],
+        unit_h: int,
+        unit_w: int,
+    ) -> np.ndarray:
+        """
+        Creates a heatmap overlay based on the 'mean' score of each unit.
+        Colors range from Blue (Low) -> Green -> Red (High).
+        """
+        if image.dim() == 4:
+            image = image.squeeze(0)
+
+        # RGB Numpy
+        img_np = image.detach().permute(1, 2, 0).cpu().numpy()
+        img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
+
+        overlay = img_np.copy()
+        rows, cols = grid_shape
+
+        # Extract scores for normalization
+        # We assume units contains all units for the grid
+        scores = [u.mean for u in units]
+        if not scores:
+            return img_np
+
+        min_s, max_s = min(scores), max(scores)
+        rng = max_s - min_s if max_s != min_s else 1.0
+
+        unit_map = {(u.row, u.col): u for u in units}
+
+        for r in range(rows):
+            for c in range(cols):
+                if (r, c) not in unit_map:
+                    continue
+
+                u = unit_map[(r, c)]
+                norm = (u.mean - min_s) / rng
+
+                # Color mapping: Blue (Low) -> Green -> Red (High)
+                if norm < 0.5:
+                    # 0.0 (Blue) -> 0.5 (Green)
+                    n = norm * 2
+                    b, g, r_val = int(255 * (1 - n)), int(255 * n), 0
+                else:
+                    # 0.5 (Green) -> 1.0 (Red)
+                    n = (norm - 0.5) * 2
+                    b, g, r_val = 0, int(255 * (1 - n)), int(255 * n)
+
+                y, x = r * unit_h, c * unit_w
+                # Draw filled rectangle
+                cv2.rectangle(
+                    overlay, (x, y), (x + unit_w, y + unit_h), (b, g, r_val), -1
+                )
+
+        # Alpha blend
+        alpha = 0.6
+        cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
+        return img_np

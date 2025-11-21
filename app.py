@@ -24,13 +24,14 @@ except Exception as e:
 
 
 def run_analysis(
-    image_path, height, width, metric_name, top_n, sort_by, descending
+    image_path, height, width, metric_name, top_n, sort_by, descending, action_mode
 ):
     """
     The core function called when user clicks 'Run Detection'
+    action_mode: 'top_n', 'all', 'matrix'
     """
     if image_path is None:
-        return None, "Please upload an image.", ""
+        return None, None, "Please upload an image.", ""
 
     try:
         # Setup Components
@@ -55,10 +56,17 @@ def run_analysis(
         # 3. Analyze & Annotate (Detection Phase)
         t_det_start = time.time()
 
+        # Determine effective top_n
+        if action_mode in ["all", "matrix"]:
+            # Use a number larger than any possible grid count
+            actual_top_n = 999999
+        else:
+            actual_top_n = int(top_n)
+
         stats = analyzer.analyze(
             patches,
             grid_shape,
-            top_n=int(top_n),
+            top_n=actual_top_n,
             sort_by=sort_by,
             ascending=not descending,
         )
@@ -67,8 +75,15 @@ def run_analysis(
             image_tensor, stats, int(height), int(width)
         )
 
+        matrix_image = None
+        if action_mode == "matrix":
+            matrix_image = processor.create_heatmap(
+                image_tensor, stats, grid_shape, int(height), int(width)
+            )
+
         t_det_end = time.time()
         det_duration = t_det_end - t_det_start
+        
         # Clear GPU cache before running PaddleSeg to avoid OOM/Lag
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -90,13 +105,13 @@ def run_analysis(
         # 6. Format JSON result
         json_result = json.dumps([u.to_dict() for u in stats], indent=4)
 
-        return result_image, json_result, perf_text
+        return result_image, matrix_image, json_result, perf_text
 
     except Exception as e:
         import traceback
 
         traceback.print_exc()
-        return None, f"Error: {str(e)}", ""
+        return None, None, f"Error: {str(e)}", ""
 
 
 # --- Build the UI ---
@@ -111,8 +126,13 @@ def create_ui(input_dir=None):
 
         with gr.Row():
             with gr.Column(scale=1):
-                # Move Run Button to the Top
-                btn_run = gr.Button("🚀 Run Detection", variant="primary")
+                # Action Buttons
+                with gr.Row():
+                    btn_run = gr.Button("🚀 Top N", variant="primary")
+                    btn_all = gr.Button("👀 All Units")
+                    btn_matrix = gr.Button("📊 Matrix")
+                
+                gr.Markdown("### Settings")
 
                 # Input Controls
                 img_input = gr.Image(type="filepath", label="Input Image")
@@ -168,6 +188,7 @@ def create_ui(input_dir=None):
                 # Outputs
                 with gr.Row():
                     img_output = gr.Image(label="My Detection (Unit Stats)")
+                    matrix_output = gr.Image(label="Score Matrix Heatmap")
 
                 perf_output = gr.Markdown()
                 json_output = gr.Code(language="json", label="Statistics")
@@ -178,18 +199,29 @@ def create_ui(input_dir=None):
             fn=lambda x: x == "CIELAB (Color)", inputs=metric_input, outputs=desc_input
         )
 
+        # Common inputs for all buttons
+        common_inputs = [
+            img_input, h_input, w_input, metric_input, 
+            top_n_input, sort_input, desc_input
+        ]
+        common_outputs = [img_output, matrix_output, json_output, perf_output]
+
         btn_run.click(
             fn=run_analysis,
-            inputs=[
-                img_input,
-                h_input,
-                w_input,
-                metric_input,
-                top_n_input,
-                sort_input,
-                desc_input,
-            ],
-            outputs=[img_output, json_output, perf_output],
+            inputs=common_inputs + [gr.State("top_n")],
+            outputs=common_outputs,
+        )
+
+        btn_all.click(
+            fn=run_analysis,
+            inputs=common_inputs + [gr.State("all")],
+            outputs=common_outputs,
+        )
+
+        btn_matrix.click(
+            fn=run_analysis,
+            inputs=common_inputs + [gr.State("matrix")],
+            outputs=common_outputs,
         )
     return demo
 
