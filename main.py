@@ -64,6 +64,24 @@ def main():
         default=1.0,
         help="Adjust contrast (0.0 to 3.0)",
     )
+    parser.add_argument(
+        "--blur",
+        type=float,
+        default=0.0,
+        help="Gaussian Blur radius (0 to 5) to reduce grain noise",
+    )
+    parser.add_argument(
+        "--sharpen",
+        type=float,
+        default=0.0,
+        help="Sharpen strength (0.0 to 2.0) to highlight edges",
+    )
+    parser.add_argument(
+        "--clahe",
+        type=float,
+        default=0.0,
+        help="CLAHE limit (0.0 to 5.0) for local contrast",
+    )
 
     args = parser.parse_args()
 
@@ -104,6 +122,7 @@ def main():
         print("Loading and tiling image...")
         image_tensor = processor.load_image(args.image_path)
 
+        # Global Adjustments
         if args.brightness != 0.0 or args.contrast != 1.0:
             print(
                 f"Adjusting image: Brightness={args.brightness}, Contrast={args.contrast}"
@@ -111,6 +130,11 @@ def main():
             image_tensor = processor.adjust_image(
                 image_tensor, args.brightness, args.contrast
             )
+
+        # Advanced Texture Preprocessing
+        image_tensor = processor.apply_preprocessing(
+            image_tensor, args.blur, args.sharpen, args.clahe
+        )
 
         patches, grid_shape = processor.extract_patches(
             image_tensor, args.height, args.width

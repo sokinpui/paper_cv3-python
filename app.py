@@ -42,6 +42,9 @@ def run_analysis(
     cluster_method,
     brightness,
     contrast,
+    blur,
+    sharpen,
+    clahe,
     action_mode,
 ):
     """
@@ -73,9 +76,14 @@ def run_analysis(
         # 1. Load
         image_tensor = processor.load_image(image_path)
 
-        # 1.5 Adjust Image (Brightness/Contrast)
+        # 1.5 Adjust Image (Global Brightness/Contrast)
         image_tensor = processor.adjust_image(
             image_tensor, float(brightness), float(contrast)
+        )
+
+        # 1.6 Preprocessing (Blur, Sharpen, CLAHE)
+        image_tensor = processor.apply_preprocessing(
+            image_tensor, float(blur), float(sharpen), float(clahe)
         )
 
         if action_mode == "preview":
@@ -244,7 +252,22 @@ def create_ui(input_dir=None):
                         label="Brightness",
                     )
                     contrast_input = gr.Slider(
-                        minimum=0.5, maximum=3.0, value=1.0, step=0.1, label="Contrast"
+                        minimum=0.5,
+                        maximum=3.0,
+                        value=1.0,
+                        step=0.1,
+                        label="Contrast (Global)",
+                    )
+
+                with gr.Row():
+                    blur_input = gr.Slider(
+                        minimum=0, maximum=5, value=0, step=1, label="Blur (Denoise)"
+                    )
+                    sharpen_input = gr.Slider(
+                        minimum=0.0, maximum=2.0, value=0.0, step=0.1, label="Sharpen"
+                    )
+                    clahe_input = gr.Slider(
+                        minimum=0.0, maximum=5.0, value=0.0, step=0.5, label="CLAHE (Texture)"
                     )
 
                 metric_input = gr.Radio(
@@ -307,6 +330,9 @@ def create_ui(input_dir=None):
             cluster_method_input,
             brightness_input,
             contrast_input,
+            blur_input,
+            sharpen_input,
+            clahe_input,
         ]
         common_outputs = [img_output, matrix_output, json_output, perf_output]
 

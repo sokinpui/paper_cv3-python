@@ -40,6 +40,66 @@ class ImageProcessor:
         image = (image - 0.5) * contrast + 0.5 + brightness
         return torch.clamp(image, 0.0, 1.0)
 
+    def apply_preprocessing(
+        self,
+        image: torch.Tensor,
+        blur_radius: float = 0.0,
+        sharpen_factor: float = 0.0,
+        clahe_limit: float = 0.0,
+    ) -> torch.Tensor:
+        """
+        Applies advanced CV preprocessing for texture analysis.
+        Includes: Gaussian Blur (Denoise), Unsharp Mask (Sharpen), CLAHE (Local Contrast).
+        """
+        if blur_radius <= 0 and sharpen_factor <= 0 and clahe_limit <= 0:
+            return image
+
+        # Move to CPU/Numpy for OpenCV operations
+        # (N, C, H, W) -> (H, W, C)
+        if image.dim() == 4:
+            img_t = image.squeeze(0)
+        else:
+            img_t = image
+
+        img_np = img_t.permute(1, 2, 0).cpu().numpy()
+        # Convert to [0, 255] uint8 for OpenCV
+        img_cv = (img_np * 255).clip(0, 255).astype(np.uint8)
+
+        # 1. Gaussian Blur (Reduce Fabric Grain/Noise)
+        if blur_radius > 0:
+            # Kernel size must be odd
+            ksize = int(blur_radius) * 2 + 1
+            img_cv = cv2.GaussianBlur(img_cv, (ksize, ksize), 0)
+
+        # 2. CLAHE (Local Contrast Enhancement)
+        # Best applied on 'L' channel of LAB to preserve color correctness
+        if clahe_limit > 0:
+            lab = cv2.cvtColor(img_cv, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=clahe_limit, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            lab = cv2.merge((l, a, b))
+            img_cv = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+
+        # 3. Sharpening (Unsharp Mask)
+        # Highlights edges (tears, cuts)
+        if sharpen_factor > 0:
+            # Create a blurred version
+            gaussian = cv2.GaussianBlur(img_cv, (0, 0), 3.0)
+            # Weighted add: Original + Strength * (Original - Blurred)
+            img_cv = cv2.addWeighted(
+                img_cv, 1.0 + sharpen_factor, gaussian, -sharpen_factor, 0
+            )
+
+        # Convert back to Tensor
+        img_final = img_cv.astype(np.float32) / 255.0
+        tensor = torch.from_numpy(img_final).permute(2, 0, 1)
+
+        if image.dim() == 4:
+            tensor = tensor.unsqueeze(0)
+
+        return tensor.to(self.device)
+
     def extract_patches(
         self, image: torch.Tensor, unit_h: int, unit_w: int
     ) -> Tuple[torch.Tensor, Tuple[int, int]]:
