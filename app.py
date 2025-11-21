@@ -92,8 +92,15 @@ def run_analysis(
     The core function called when user clicks 'Run Detection'
     action_mode: 'top_n', 'all', 'matrix'
     """
+    # Initialize output structure: [Det, Map, Perf] per metric + [JSON]
+    num_metrics = len(METRICS_CONFIG)
+    # Fill with None/Empty strings
+    current_outputs = [None] * (num_metrics * 3) + [""]
+
     if image_path is None:
-        return None, None, "Please upload an image.", ""
+        current_outputs[-1] = "Please upload an image."
+        yield tuple(current_outputs)
+        return
 
     try:
         # Setup Components
@@ -128,11 +135,11 @@ def run_analysis(
         else:
             actual_top_n = int(top_n)
 
-        # --- Multi-Metric Detection Loop ---
-        all_image_outputs = []
         all_stats_collection = []
 
-        for name, MetricClass in METRICS_CONFIG:
+        for i, (name, MetricClass) in enumerate(METRICS_CONFIG):
+            t_metric_start = time.time()
+
             # Instantiate and Analyze
             metric = MetricClass()
             analyzer = PatchAnalyzer(metric)
@@ -160,44 +167,42 @@ def run_analysis(
                 stat_name=sort_by,
             )
 
-            all_image_outputs.append(det_img)
-            all_image_outputs.append(heatmap_img)
+            t_metric_end = time.time()
+            metric_duration = t_metric_end - t_metric_start
+
+            # Performance Stats for this metric
+            N = patches.shape[0]
+            total_pairs = N * N
+            cps = total_pairs / metric_duration if metric_duration > 0 else 0
+
+            perf_text = (
+                f"**{name} Performance:** "
+                f"{metric_duration:.4f} s | "
+                f"{cps:,.0f} pairs/sec"
+            )
+
+            # Update specific slots in the output list
+            base_idx = i * 3
+            current_outputs[base_idx] = det_img
+            current_outputs[base_idx + 1] = heatmap_img
+            current_outputs[base_idx + 2] = perf_text
 
             # Keep top 1 stat for JSON just to show something valid
             all_stats_collection.extend([s.to_dict() for s in stats[:1]])
+            
+            # Update JSON (accumulated)
+            current_outputs[-1] = json.dumps(all_stats_collection[:actual_top_n], indent=4)
 
-        t_det_end = time.time()
-        det_duration = t_det_end - t_det_start
-
-        # Performance Stats
-        N = patches.shape[0]
-        total_pairs = N * N
-        # multiplied by number of metrics
-        cps = (
-            (total_pairs * len(METRICS_CONFIG)) / det_duration
-            if det_duration > 0
-            else 0
-        )
-
-        perf_text = (
-            f"### ⚡ Performance Metrics\n"
-            f"- **Detection Time (All Metrics):** {det_duration:.4f} s\n"
-            f"- **Total Units:** {N}\n"
-            f"- **Throughput:** {cps:,.0f} pairs/sec"
-        )
-
-        # We just dump the first metric's stats to JSON to save space, or a summary
-        json_result = json.dumps(all_stats_collection[:actual_top_n], indent=4)
-
-        return tuple(all_image_outputs + [json_result, perf_text])
+            # Yield current state
+            yield tuple(current_outputs)
 
     except Exception as e:
         import traceback
 
         traceback.print_exc()
-        # Return list of Nones matching output count
-        count = len(METRICS_CONFIG) * 2
-        return tuple([None] * count + [f"Error: {str(e)}", ""])
+        # Yield error in the JSON field
+        current_outputs[-1] = f"Error: {str(e)}"
+        yield tuple(current_outputs)
 
 
 # --- Build the UI ---
@@ -318,9 +323,10 @@ def create_ui(input_dir=None):
                     with gr.Row():
                         m_det = gr.Image(label=f"Detection ({name})", type="numpy")
                         m_map = gr.Image(label=f"Heatmap ({name})", type="numpy")
-                        metric_outputs.extend([m_det, m_map])
+                    m_perf = gr.Markdown(value="Waiting...")
+                    metric_outputs.extend([m_det, m_map, m_perf])
 
-                perf_output = gr.Markdown()
+                # perf_output = gr.Markdown() # Removed global perf
                 json_output = gr.Code(language="json", label="Statistics")
 
         # Common inputs for all buttons
@@ -338,7 +344,7 @@ def create_ui(input_dir=None):
             clahe_input,
             grayscale_input,
         ]
-        common_outputs = metric_outputs + [json_output, perf_output]
+        common_outputs = metric_outputs + [json_output]
 
         btn_run.click(
             fn=run_analysis,
