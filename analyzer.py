@@ -106,16 +106,27 @@ class PatchAnalyzer:
 
         return results[:top_n]
 
-    def cluster_stats(self, stats: List[UnitStats], k: int) -> List[UnitStats]:
+    def cluster_stats(
+        self, stats: List[UnitStats], k: int, metric: str = "mean", threshold_n: float = 1.0
+    ) -> List[UnitStats]:
         """
-        Performs 1D K-Means clustering on the 'mean' score of the units.
+        Performs 1D K-Means clustering on the specified score of the units.
         Updates the cluster_id in the UnitStats objects.
         """
         if not stats or k < 2:
             return stats
 
-        # Extract data (N, 1)
-        data = torch.tensor([s.mean for s in stats], dtype=torch.float32).view(-1, 1)
+        # Extract data (N, 1) based on metric
+        values = []
+        for s in stats:
+            if metric == "std_dev":
+                values.append(s.std_dev)
+            elif metric == "threshold":
+                values.append(s.mean + threshold_n * s.std_dev)
+            else:
+                values.append(s.mean)
+
+        data = torch.tensor(values, dtype=torch.float32).view(-1, 1)
         
         # Simple K-Means implementation
         # 1. Initialize centroids (randomly select k points)

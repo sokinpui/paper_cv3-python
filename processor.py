@@ -51,7 +51,12 @@ class ImageProcessor:
         Applies advanced CV preprocessing for texture analysis.
         Includes: Grayscale, Gaussian Blur (Denoise), Unsharp Mask (Sharpen), CLAHE (Local Contrast).
         """
-        if blur_radius <= 0 and sharpen_factor <= 0 and clahe_limit <= 0 and not grayscale:
+        if (
+            blur_radius <= 0
+            and sharpen_factor <= 0
+            and clahe_limit <= 0
+            and not grayscale
+        ):
             return image
 
         # Move to CPU/Numpy for OpenCV operations
@@ -236,14 +241,21 @@ class ImageProcessor:
         img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
         img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        self._draw_annotations(img_np, units, unit_h, unit_w, grid_shape, strides, is_bgr=True)
+        self._draw_annotations(
+            img_np, units, unit_h, unit_w, grid_shape, strides, is_bgr=True
+        )
 
         cv2.imwrite(output_path, img_np)
         print(f"Annotated image saved to {output_path}")
 
     def get_annotated_rgb(
-        self, image: torch.Tensor, units: list, unit_h: int, unit_w: int,
-        grid_shape: Tuple[int, int], strides: Tuple[int, int]
+        self,
+        image: torch.Tensor,
+        units: list,
+        unit_h: int,
+        unit_w: int,
+        grid_shape: Tuple[int, int],
+        strides: Tuple[int, int],
     ) -> np.ndarray:
         """
         Returns the annotated image as an RGB numpy array for Web UI display.
@@ -258,7 +270,9 @@ class ImageProcessor:
         # Make writable copy
         img_out = img_np.copy()
 
-        self._draw_annotations(img_out, units, unit_h, unit_w, grid_shape, strides, is_bgr=False)
+        self._draw_annotations(
+            img_out, units, unit_h, unit_w, grid_shape, strides, is_bgr=False
+        )
 
         return img_out
 
@@ -365,9 +379,9 @@ class ImageProcessor:
         # Distinct colors for clusters (BGR)
         # K is usually small, define a palette
         palette = [
-            (0, 255, 0),    # Green
-            (0, 0, 255),    # Red
-            (255, 0, 0),    # Blue
+            (0, 255, 0),  # Green
+            (0, 0, 255),  # Red
+            (255, 0, 0),  # Blue
             (0, 255, 255),  # Yellow
             (255, 0, 255),  # Magenta
             (255, 255, 0),  # Cyan
@@ -376,12 +390,13 @@ class ImageProcessor:
         ]
 
         for u in units:
-            if u.cluster_id < 0: continue
-            
+            if u.cluster_id < 0:
+                continue
+
             color = palette[u.cluster_id % len(palette)]
             y = u.row * stride_h if u.row < rows - 1 else H - unit_h
             x = u.col * stride_w if u.col < cols - 1 else W - unit_w
-            
+
             cv2.rectangle(overlay, (x, y), (x + unit_w, y + unit_h), color, -1)
 
         alpha = 0.5
@@ -390,21 +405,40 @@ class ImageProcessor:
         # Draw scores on top of the blended image if requested
         if show_scores:
             for u in units:
-                if u.cluster_id < 0: continue
-                
+                if u.cluster_id < 0:
+                    continue
+
                 y = u.row * stride_h if u.row < rows - 1 else H - unit_h
                 x = u.col * stride_w if u.col < cols - 1 else W - unit_w
-                
-                text = f"{u.mean:.2f}"
+
+                text = f"{u.mean:.5f}"
                 font_scale = 0.8
                 thickness = 2
-                (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                
+                (tw, th), _ = cv2.getTextSize(
+                    text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+                )
+
                 tx = x + (unit_w - tw) // 2
                 ty = y + (unit_h + th) // 2
-                
+
                 # Draw with outline for visibility
-                cv2.putText(img_np, text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), thickness + 2)
-                cv2.putText(img_np, text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
+                cv2.putText(
+                    img_np,
+                    text,
+                    (tx, ty),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    (0, 0, 0),
+                    thickness + 2,
+                )
+                cv2.putText(
+                    img_np,
+                    text,
+                    (tx, ty),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    (255, 255, 255),
+                    thickness,
+                )
 
         return img_np

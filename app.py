@@ -92,6 +92,8 @@ def run_analysis(
     action_mode_ui,
     k_clusters,
     cluster_show_scores,
+    cluster_metric,
+    cluster_threshold_n,
 ):
     """
     The core function called when user clicks 'Run Detection'
@@ -168,7 +170,12 @@ def run_analysis(
 
             # Perform Clustering if requested
             if action_mode == "clustering":
-                stats = analyzer.cluster_stats(stats, int(k_clusters))
+                stats = analyzer.cluster_stats(
+                    stats,
+                    int(k_clusters),
+                    metric=cluster_metric,
+                    threshold_n=float(cluster_threshold_n),
+                )
 
             # Generate Result Image based on Mode
             if action_mode == "clustering":
@@ -264,7 +271,7 @@ def create_ui(input_dir=None):
                 # Action Buttons
                 mode_input = gr.Radio(
                     choices=["Top N", "All Units", "Heatmap", "Clustering"],
-                    value="Top N",
+                    value="Clustering",
                     label="Analysis Mode",
                 )
                 with gr.Row():
@@ -371,16 +378,30 @@ def create_ui(input_dir=None):
                     visible=False,
                 )
 
+                cluster_metric_input = gr.Dropdown(
+                    choices=["mean", "std_dev", "threshold"],
+                    value="mean",
+                    label="Clustering Metric",
+                    visible=False,
+                )
+
+                cluster_threshold_n_input = gr.Number(
+                    value=1.0,
+                    label="Threshold N (Mean + N * Std)",
+                    visible=False,
+                )
+
                 cluster_show_scores = gr.Checkbox(
                     value=False, label="Show Scores on Map", visible=False
                 )
 
                 # Visibility Logic
-                def update_visibility(mode):
+                def update_visibility(mode, metric):
                     is_top_n = mode == "Top N"
                     is_all = mode == "All Units"
                     is_heatmap = mode == "Heatmap"
                     is_cluster = mode == "Clustering"
+                    is_threshold = is_cluster and (metric == "threshold")
 
                     return (
                         gr.update(visible=is_top_n),  # top_n
@@ -388,17 +409,35 @@ def create_ui(input_dir=None):
                         gr.update(visible=(is_top_n or is_all)),  # desc
                         gr.update(visible=is_cluster),  # k
                         gr.update(visible=is_cluster),  # show_scores
+                        gr.update(visible=is_cluster),  # cluster_metric
+                        gr.update(visible=is_threshold),  # threshold_n
                     )
 
                 mode_input.change(
                     fn=update_visibility,
-                    inputs=mode_input,
+                    inputs=[mode_input, cluster_metric_input],
                     outputs=[
                         top_n_input,
                         sort_input,
                         desc_input,
                         k_input,
                         cluster_show_scores,
+                        cluster_metric_input,
+                        cluster_threshold_n_input,
+                    ],
+                )
+
+                cluster_metric_input.change(
+                    fn=update_visibility,
+                    inputs=[mode_input, cluster_metric_input],
+                    outputs=[
+                        top_n_input,
+                        sort_input,
+                        desc_input,
+                        k_input,
+                        cluster_show_scores,
+                        cluster_metric_input,
+                        cluster_threshold_n_input,
                     ],
                 )
 
@@ -434,6 +473,8 @@ def create_ui(input_dir=None):
             mode_input,
             k_input,
             cluster_show_scores,
+            cluster_metric_input,
+            cluster_threshold_n_input,
         ]
         common_outputs = metric_outputs + [json_output]
 
