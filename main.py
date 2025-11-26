@@ -10,6 +10,8 @@ from metrics import (
     GradientColorMetric,
     HistogramMetric,
     LabMomentsMetric,
+    SSIMColorMixedMetric,
+    SSIMHalfMetric,
     SSIMMetric,
     TextureColorMetric,
 )
@@ -31,7 +33,7 @@ def main():
         "--metric",
         "-m",
         type=str,
-        choices=["ssim", "cielab", "moments", "texture", "grad_color", "hist"],
+        choices=["ssim", "ssim_half", "ssim_color", "cielab", "moments", "texture", "grad_color", "hist"],
         default="ssim",
         help="Comparison metric",
     )
@@ -112,6 +114,10 @@ def main():
 
     if args.metric == "ssim":
         metric = SSIMMetric()
+    elif args.metric == "ssim_half":
+        metric = SSIMHalfMetric()
+    elif args.metric == "ssim_color":
+        metric = SSIMColorMixedMetric()
     elif args.metric == "moments":
         metric = LabMomentsMetric()
     elif args.metric == "texture":

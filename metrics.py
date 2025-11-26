@@ -78,6 +78,53 @@ class SSIMMetric(MetricStrategy):
         return 1.0 - mean_ssim
 
 
+class SSIMHalfMetric(MetricStrategy):
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes Structural Similarity ignoring Luminance term (CS only).
+        Formula: CS(x,y) = (2 * sigma_xy + C2) / (sigma_x^2 + sigma_y^2 + C2)
+        Averaged over channels.
+        """
+        N, C, H, W = patches.shape
+        P = H * W
+
+        # Constants for SSIM (assuming range 0-1)
+        L_dyn = 1.0
+        K2 = 0.03
+        C2 = (K2 * L_dyn) ** 2
+
+        # Reshape to (N, C, P)
+        x = patches.reshape(N, C, -1)
+
+        total_cs = torch.zeros((N, N), device=patches.device)
+
+        for c in range(C):
+            # Extract channel: (N, P)
+            xc = x[:, c, :]
+
+            # 1. Means (N, 1) needed for covariance
+            mu = xc.mean(dim=1, keepdim=True)
+
+            # 2. Covariance (N, N)
+            xc_centered = xc - mu
+            sigma_xy = (xc_centered @ xc_centered.T) / P
+
+            # Variance (N, 1)
+            sigma_sq = sigma_xy.diag().unsqueeze(1)
+
+            # 3. Contrast-Structure Term (N, N)
+            sigma_sq_sum = sigma_sq + sigma_sq.T
+            cs_term = (2 * sigma_xy + C2) / (sigma_sq_sum + C2)
+
+            total_cs += cs_term
+
+        # Average over channels
+        mean_cs = total_cs / C
+
+        # Return Distance (1 - Similarity)
+        return 1.0 - mean_cs
+
+
 class CIELabMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -160,6 +207,19 @@ class CIELabMetric(MetricStrategy):
         b_chan = 200 * (y - z)
 
         return torch.stack([l_chan, a_chan, b_chan], dim=1)
+
+
+class SSIMColorMixedMetric(MetricStrategy):
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes a mixed metric: Structure (SSIM) * Color (Lab Similarity).
+        Similarity = SSIM_Sim * (1 / (1 + Lab_Dist))
+        Returns Distance = 1 - Similarity
+        """
+        ssim_sim = 1.0 - SSIMMetric().compute(patches)
+        lab_dist = CIELabMetric().compute(patches)
+        color_sim = 1.0 / (1.0 + lab_dist)
+        return 1.0 - (ssim_sim * color_sim)
 
 
 class LabMomentsMetric(CIELabMetric):

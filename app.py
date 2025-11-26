@@ -14,6 +14,8 @@ from metrics import (
     GradientColorMetric,
     HistogramMetric,
     LabMomentsMetric,
+    SSIMColorMixedMetric,
+    SSIMHalfMetric,
     SSIMMetric,
     TextureColorMetric,
 )
@@ -29,6 +31,8 @@ if not hasattr(gr, "Modal"):
 # 0. Configuration
 METRICS_CONFIG = [
     ("SSIM (Structure)", SSIMMetric),
+    ("SSIM-Half (Structure Only)", SSIMHalfMetric),
+    ("SSIM & Color (Mixed)", SSIMColorMixedMetric),
     ("Gradient & Color (Lines)", GradientColorMetric),
     ("Texture & Color (Defects)", TextureColorMetric),
     ("Color Histogram", HistogramMetric),
