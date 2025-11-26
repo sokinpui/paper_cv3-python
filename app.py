@@ -91,6 +91,7 @@ def run_analysis(
     overlap,
     action_mode_ui,
     k_clusters,
+    cluster_show_scores,
 ):
     """
     The core function called when user clicks 'Run Detection'
@@ -178,6 +179,7 @@ def run_analysis(
                     strides,
                     int(height),
                     int(width),
+                    show_scores=cluster_show_scores,
                 )
             elif action_mode == "heatmap":
                 result_img = processor.create_heatmap(
@@ -347,7 +349,7 @@ def create_ui(input_dir=None):
                     grayscale_input = gr.Checkbox(
                         value=False, label="Convert to Grayscale"
                     )
-                
+
                 # Dynamic Settings
                 top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
                 sort_input = gr.Dropdown(
@@ -363,10 +365,14 @@ def create_ui(input_dir=None):
                 k_input = gr.Slider(
                     minimum=2,
                     maximum=8,
-                    value=3,
+                    value=2,
                     step=1,
                     label="K Clusters (for Clustering)",
                     visible=False,
+                )
+
+                cluster_show_scores = gr.Checkbox(
+                    value=False, label="Show Scores on Map", visible=False
                 )
 
                 # Visibility Logic
@@ -381,12 +387,19 @@ def create_ui(input_dir=None):
                         gr.update(visible=(is_top_n or is_all or is_heatmap)),  # sort
                         gr.update(visible=(is_top_n or is_all)),  # desc
                         gr.update(visible=is_cluster),  # k
+                        gr.update(visible=is_cluster),  # show_scores
                     )
 
                 mode_input.change(
                     fn=update_visibility,
                     inputs=mode_input,
-                    outputs=[top_n_input, sort_input, desc_input, k_input],
+                    outputs=[
+                        top_n_input,
+                        sort_input,
+                        desc_input,
+                        k_input,
+                        cluster_show_scores,
+                    ],
                 )
 
             with gr.Column(scale=3):
@@ -420,6 +433,7 @@ def create_ui(input_dir=None):
             overlap_input,
             mode_input,
             k_input,
+            cluster_show_scores,
         ]
         common_outputs = metric_outputs + [json_output]
 

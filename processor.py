@@ -346,6 +346,7 @@ class ImageProcessor:
         strides: Tuple[int, int],
         unit_h: int,
         unit_w: int,
+        show_scores: bool = False,
     ) -> np.ndarray:
         """
         Creates a visualization where each unit is colored by its cluster_id.
@@ -385,4 +386,25 @@ class ImageProcessor:
 
         alpha = 0.5
         cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
+
+        # Draw scores on top of the blended image if requested
+        if show_scores:
+            for u in units:
+                if u.cluster_id < 0: continue
+                
+                y = u.row * stride_h if u.row < rows - 1 else H - unit_h
+                x = u.col * stride_w if u.col < cols - 1 else W - unit_w
+                
+                text = f"{u.mean:.2f}"
+                font_scale = 0.8
+                thickness = 2
+                (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                
+                tx = x + (unit_w - tw) // 2
+                ty = y + (unit_h + th) // 2
+                
+                # Draw with outline for visibility
+                cv2.putText(img_np, text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), thickness + 2)
+                cv2.putText(img_np, text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
+
         return img_np
