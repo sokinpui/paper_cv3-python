@@ -34,9 +34,26 @@ class PatchAnalyzer:
         if N < k:
             return torch.zeros(N, dtype=torch.long, device=data.device)
 
-        # 1. Initialize centroids (randomly select k points)
-        indices = torch.randperm(N, device=data.device)[:k]
-        centroids = data[indices].clone()
+        # 1. Initialize centroids deterministically (Maximin / Farthest Point Sampling)
+        # This ensures stability and covers extremes (like min/max for 1D).
+        centroids = []
+
+        # 1.1 Start with the point having the minimum value (1D) or norm (ND)
+        if data.shape[1] == 1:
+            first_idx = torch.argmin(data).item()
+        else:
+            first_idx = torch.argmin(torch.sum(data**2, dim=1)).item()
+        centroids.append(data[first_idx])
+
+        # 1.2 Select subsequent centroids based on maximum distance
+        dist_sq = torch.sum((data - centroids[0]) ** 2, dim=1)
+        for _ in range(1, k):
+            next_idx = torch.argmax(dist_sq).item()
+            centroids.append(data[next_idx])
+            new_dist_sq = torch.sum((data - centroids[-1]) ** 2, dim=1)
+            dist_sq = torch.min(dist_sq, new_dist_sq)
+
+        centroids = torch.stack(centroids)
 
         labels = torch.zeros(N, dtype=torch.long, device=data.device)
 
