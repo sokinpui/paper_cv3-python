@@ -350,6 +350,17 @@ class ImageProcessor:
         # Alpha blend
         alpha = 0.6
         cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
+
+        # Draw borders for all grid cells
+        border_color = (0, 0, 0)  # Black
+        for r in range(rows):
+            for c in range(cols):
+                y = r * stride_h if r < rows - 1 else H - unit_h
+                x = c * stride_w if c < cols - 1 else W - unit_w
+                cv2.rectangle(
+                    img_np, (x, y), (x + unit_w, y + unit_h), border_color, 1
+                )
+
         return img_np
 
     def create_cluster_map(
@@ -401,6 +412,16 @@ class ImageProcessor:
 
         alpha = 0.5
         cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
+
+        # Draw borders for all grid cells
+        border_color = (0, 0, 0)  # Black
+        for r in range(rows):
+            for c in range(cols):
+                y = r * stride_h if r < rows - 1 else H - unit_h
+                x = c * stride_w if c < cols - 1 else W - unit_w
+                cv2.rectangle(
+                    img_np, (x, y), (x + unit_w, y + unit_h), border_color, 1
+                )
 
         # Draw scores on top of the blended image if requested
         if show_scores:
