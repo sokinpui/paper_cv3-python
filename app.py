@@ -45,36 +45,6 @@ except Exception as e:
     print(f"Warning: {e}")
     device = torch.device("cpu")
 
-
-def generate_preview(image_path, brightness, contrast, blur, sharpen, clahe, grayscale):
-    """
-    Lightweight function to generate a preview of the pre-processing.
-    Returns: (Modal Update, Image)
-    """
-    if image_path is None:
-        return gr.update(visible=False), None
-
-    try:
-        processor = ImageProcessor(device)
-        image_tensor = processor.load_image(image_path)
-
-        # Adjustments
-        image_tensor = processor.adjust_image(
-            image_tensor, float(brightness), float(contrast)
-        )
-        image_tensor = processor.apply_preprocessing(
-            image_tensor, float(blur), float(sharpen), float(clahe), grayscale
-        )
-
-        img_np = image_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-        img_np = (img_np * 255).clip(0, 255).astype("uint8")
-
-        return gr.update(visible=True), img_np
-    except Exception as e:
-        print(f"Preview Error: {e}")
-        return gr.update(visible=False), None
-
-
 def run_analysis(
     image_path,
     height,
@@ -82,12 +52,6 @@ def run_analysis(
     top_n,
     sort_by,
     descending,
-    brightness,
-    contrast,
-    blur,
-    sharpen,
-    clahe,
-    grayscale,
     overlap,
     action_mode_ui,
     k_clusters,
@@ -127,16 +91,6 @@ def run_analysis(
         # Pipeline
         # 1. Load
         image_tensor = processor.load_image(image_path)
-
-        # 1.5 Adjust Image (Global Brightness/Contrast)
-        image_tensor = processor.adjust_image(
-            image_tensor, float(brightness), float(contrast)
-        )
-
-        # 1.6 Preprocessing (Blur, Sharpen, CLAHE)
-        image_tensor = processor.apply_preprocessing(
-            image_tensor, float(blur), float(sharpen), float(clahe), grayscale
-        )
 
         # 2. Tile
         patches, grid_shape, strides = processor.extract_patches(
@@ -260,19 +214,6 @@ def create_ui(input_dir=None):
             "Upload an image to find significant/unique blocks using CUDA acceleration."
         )
 
-        # --- Popup Preview Modal ---
-        with gr.Modal(visible=False) as preview_modal:
-            gr.Markdown("### 🖼️ Pre-processing Preview")
-            with gr.Row():
-                preview_image = gr.Image(
-                    label="Processed Image", type="numpy", interactive=False
-                )
-
-            btn_close_preview = gr.Button("Close Preview")
-            btn_close_preview.click(
-                lambda: gr.update(visible=False), None, preview_modal
-            )
-
         with gr.Row():
             with gr.Column(scale=1):
                 # Action Buttons
@@ -283,7 +224,6 @@ def create_ui(input_dir=None):
                 )
                 with gr.Row():
                     btn_run = gr.Button("🚀 Run Analysis", variant="primary")
-                    btn_preview = gr.Button("🖼️ Preview")
 
                 gr.Markdown("### Settings")
 
@@ -326,42 +266,6 @@ def create_ui(input_dir=None):
                         value=0.0,
                         step=0.05,
                         label="Overlap Ratio",
-                    )
-
-                with gr.Row():
-                    brightness_input = gr.Slider(
-                        minimum=-0.5,
-                        maximum=0.5,
-                        value=0.0,
-                        step=0.05,
-                        label="Brightness",
-                    )
-                    contrast_input = gr.Slider(
-                        minimum=0.5,
-                        maximum=3.0,
-                        value=1.0,
-                        step=0.1,
-                        label="Contrast (Global)",
-                    )
-
-                with gr.Row():
-                    blur_input = gr.Slider(
-                        minimum=0, maximum=5, value=0, step=1, label="Blur (Denoise)"
-                    )
-                    sharpen_input = gr.Slider(
-                        minimum=0.0, maximum=2.0, value=0.0, step=0.1, label="Sharpen"
-                    )
-                    clahe_input = gr.Slider(
-                        minimum=0.0,
-                        maximum=5.0,
-                        value=0.0,
-                        step=0.5,
-                        label="CLAHE (Texture)",
-                    )
-
-                with gr.Row():
-                    grayscale_input = gr.Checkbox(
-                        value=False, label="Convert to Grayscale"
                     )
 
                 # Dynamic Settings
@@ -476,12 +380,6 @@ def create_ui(input_dir=None):
             top_n_input,
             sort_input,
             desc_input,
-            brightness_input,
-            contrast_input,
-            blur_input,
-            sharpen_input,
-            clahe_input,
-            grayscale_input,
             overlap_input,
             mode_input,
             k_input,
@@ -497,21 +395,6 @@ def create_ui(input_dir=None):
             outputs=common_outputs,
         )
 
-        # Preview Button Logic
-        preview_inputs = [
-            img_input,
-            brightness_input,
-            contrast_input,
-            blur_input,
-            sharpen_input,
-            clahe_input,
-            grayscale_input,
-        ]
-        btn_preview.click(
-            fn=generate_preview,
-            inputs=preview_inputs,
-            outputs=[preview_modal, preview_image],
-        )
     return demo
 
 
