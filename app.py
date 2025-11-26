@@ -358,15 +358,20 @@ def create_ui(input_dir=None):
                     )
 
                 # Dynamic Settings
-                top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
+                top_n_input = gr.Number(
+                    value=5, label="Top N Units", precision=0, visible=False
+                )
                 sort_input = gr.Dropdown(
                     choices=["mean", "median", "std_dev", "min_score", "max_score"],
                     value="mean",
                     label="Sort By Stat",
+                    visible=False,
                 )
 
                 desc_input = gr.Checkbox(
-                    value=True, label="Sort Descending (High Score = Significant)"
+                    value=True,
+                    label="Sort Descending (High Score = Significant)",
+                    visible=False,
                 )
 
                 k_input = gr.Slider(
@@ -375,14 +380,14 @@ def create_ui(input_dir=None):
                     value=2,
                     step=1,
                     label="K Clusters (for Clustering)",
-                    visible=False,
+                    visible=True,
                 )
 
                 cluster_metric_input = gr.Dropdown(
                     choices=["mean", "std_dev", "threshold"],
                     value="mean",
                     label="Clustering Metric",
-                    visible=False,
+                    visible=True,
                 )
 
                 cluster_threshold_n_input = gr.Number(
@@ -392,7 +397,7 @@ def create_ui(input_dir=None):
                 )
 
                 cluster_show_scores = gr.Checkbox(
-                    value=False, label="Show Scores on Map", visible=False
+                    value=True, label="Show Scores on Map", visible=True
                 )
 
                 # Visibility Logic
