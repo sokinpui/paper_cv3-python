@@ -14,6 +14,7 @@ class UnitStats:
     std_dev: float
     min_score: float
     max_score: float
+    cluster_id: int = -1
 
     def to_dict(self):
         return self.__dict__
@@ -104,3 +105,42 @@ class PatchAnalyzer:
         results.sort(key=lambda x: getattr(x, sort_by), reverse=not ascending)
 
         return results[:top_n]
+
+    def cluster_stats(self, stats: List[UnitStats], k: int) -> List[UnitStats]:
+        """
+        Performs 1D K-Means clustering on the 'mean' score of the units.
+        Updates the cluster_id in the UnitStats objects.
+        """
+        if not stats or k < 2:
+            return stats
+
+        # Extract data (N, 1)
+        data = torch.tensor([s.mean for s in stats], dtype=torch.float32).view(-1, 1)
+        
+        # Simple K-Means implementation
+        # 1. Initialize centroids (randomly select k points)
+        N = data.shape[0]
+        indices = torch.randperm(N)[:k]
+        centroids = data[indices].clone()
+
+        for _ in range(20):  # Max iterations
+            # 2. Assign labels: |x - c|
+            # (N, 1) - (1, K) -> (N, K)
+            dists = torch.abs(data - centroids.T)
+            labels = torch.argmin(dists, dim=1)
+
+            # 3. Update centroids
+            new_centroids = []
+            for i in range(k):
+                mask = labels == i
+                if mask.any():
+                    new_centroids.append(data[mask].mean())
+                else:
+                    new_centroids.append(centroids[i]) # Keep old if empty
+            centroids = torch.tensor(new_centroids).view(-1, 1)
+
+        # Assign back to stats
+        for i, s in enumerate(stats):
+            s.cluster_id = labels[i].item()
+            
+        return stats

@@ -89,16 +89,26 @@ def run_analysis(
     clahe,
     grayscale,
     overlap,
-    action_mode,
+    action_mode_ui,
+    k_clusters,
 ):
     """
     The core function called when user clicks 'Run Detection'
-    action_mode: 'top_n', 'all', 'matrix'
+    action_mode: 'top_n', 'all', 'heatmap', 'clustering'
     """
-    # Initialize output structure: [Det, Map, Perf] per metric + [JSON]
+    # Map UI string to internal mode
+    mode_map = {
+        "Top N": "top_n",
+        "All Units": "all",
+        "Heatmap": "heatmap",
+        "Clustering": "clustering",
+    }
+    action_mode = mode_map.get(action_mode_ui, "top_n")
+
+    # Initialize output structure: [Img, Perf] per metric + [JSON]
     num_metrics = len(METRICS_CONFIG)
     # Fill with None/Empty strings
-    current_outputs = [None] * (num_metrics * 3) + [""]
+    current_outputs = [None] * (num_metrics * 2) + [""]
 
     if image_path is None:
         current_outputs[-1] = "Please upload an image."
@@ -132,7 +142,7 @@ def run_analysis(
         t_det_start = time.time()
 
         # Determine effective top_n
-        if action_mode in ["all", "matrix"]:
+        if action_mode in ["all", "heatmap", "clustering"]:
             # Use a number larger than any possible grid count
             actual_top_n = 999999
         else:
@@ -155,21 +165,35 @@ def run_analysis(
                 ascending=not descending,
             )
 
-            # 1. Detection Image
-            det_img = processor.get_annotated_rgb(
-                image_tensor, stats, int(height), int(width), grid_shape, strides
-            )
+            # Perform Clustering if requested
+            if action_mode == "clustering":
+                stats = analyzer.cluster_stats(stats, int(k_clusters))
 
-            # 2. Heatmap Image
-            heatmap_img = processor.create_heatmap(
-                image_tensor,
-                stats,
-                grid_shape,
-                strides,
-                int(height),
-                int(width),
-                stat_name=sort_by,
-            )
+            # Generate Result Image based on Mode
+            if action_mode == "clustering":
+                result_img = processor.create_cluster_map(
+                    image_tensor,
+                    stats,
+                    grid_shape,
+                    strides,
+                    int(height),
+                    int(width),
+                )
+            elif action_mode == "heatmap":
+                result_img = processor.create_heatmap(
+                    image_tensor,
+                    stats,
+                    grid_shape,
+                    strides,
+                    int(height),
+                    int(width),
+                    stat_name=sort_by,
+                )
+            else:
+                # top_n or all: Show annotated boxes
+                result_img = processor.get_annotated_rgb(
+                    image_tensor, stats, int(height), int(width), grid_shape, strides
+                )
 
             t_metric_end = time.time()
             metric_duration = t_metric_end - t_metric_start
@@ -186,10 +210,9 @@ def run_analysis(
             )
 
             # Update specific slots in the output list
-            base_idx = i * 3
-            current_outputs[base_idx] = det_img
-            current_outputs[base_idx + 1] = heatmap_img
-            current_outputs[base_idx + 2] = perf_text
+            base_idx = i * 2
+            current_outputs[base_idx] = result_img
+            current_outputs[base_idx + 1] = perf_text
 
             # Keep top 1 stat for JSON just to show something valid
             all_stats_collection.extend([s.to_dict() for s in stats[:1]])
@@ -237,10 +260,13 @@ def create_ui(input_dir=None):
         with gr.Row():
             with gr.Column(scale=1):
                 # Action Buttons
+                mode_input = gr.Radio(
+                    choices=["Top N", "All Units", "Heatmap", "Clustering"],
+                    value="Top N",
+                    label="Analysis Mode",
+                )
                 with gr.Row():
-                    btn_run = gr.Button("🚀 Top N", variant="primary")
-                    btn_all = gr.Button("👀 All Units")
-                    btn_matrix = gr.Button("📊 Matrix")
+                    btn_run = gr.Button("🚀 Run Analysis", variant="primary")
                     btn_preview = gr.Button("🖼️ Preview")
 
                 gr.Markdown("### Settings")
@@ -321,17 +347,46 @@ def create_ui(input_dir=None):
                     grayscale_input = gr.Checkbox(
                         value=False, label="Convert to Grayscale"
                     )
-
-                with gr.Row():
-                    top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
-                    sort_input = gr.Dropdown(
-                        choices=["mean", "median", "std_dev", "min_score", "max_score"],
-                        value="mean",
-                        label="Sort By Stat",
-                    )
+                
+                # Dynamic Settings
+                top_n_input = gr.Number(value=5, label="Top N Units", precision=0)
+                sort_input = gr.Dropdown(
+                    choices=["mean", "median", "std_dev", "min_score", "max_score"],
+                    value="mean",
+                    label="Sort By Stat",
+                )
 
                 desc_input = gr.Checkbox(
                     value=True, label="Sort Descending (High Score = Significant)"
+                )
+
+                k_input = gr.Slider(
+                    minimum=2,
+                    maximum=8,
+                    value=3,
+                    step=1,
+                    label="K Clusters (for Clustering)",
+                    visible=False,
+                )
+
+                # Visibility Logic
+                def update_visibility(mode):
+                    is_top_n = mode == "Top N"
+                    is_all = mode == "All Units"
+                    is_heatmap = mode == "Heatmap"
+                    is_cluster = mode == "Clustering"
+
+                    return (
+                        gr.update(visible=is_top_n),  # top_n
+                        gr.update(visible=(is_top_n or is_all or is_heatmap)),  # sort
+                        gr.update(visible=(is_top_n or is_all)),  # desc
+                        gr.update(visible=is_cluster),  # k
+                    )
+
+                mode_input.change(
+                    fn=update_visibility,
+                    inputs=mode_input,
+                    outputs=[top_n_input, sort_input, desc_input, k_input],
                 )
 
             with gr.Column(scale=3):
@@ -341,11 +396,9 @@ def create_ui(input_dir=None):
                 metric_outputs = []
                 for name, _ in METRICS_CONFIG:
                     gr.Markdown(f"**{name}**")
-                    with gr.Row():
-                        m_det = gr.Image(label=f"Detection ({name})", type="numpy")
-                        m_map = gr.Image(label=f"Heatmap ({name})", type="numpy")
+                    m_img = gr.Image(label=f"Result ({name})", type="numpy")
                     m_perf = gr.Markdown(value="Waiting...")
-                    metric_outputs.extend([m_det, m_map, m_perf])
+                    metric_outputs.extend([m_img, m_perf])
 
                 # perf_output = gr.Markdown() # Removed global perf
                 json_output = gr.Code(language="json", label="Statistics")
@@ -365,24 +418,14 @@ def create_ui(input_dir=None):
             clahe_input,
             grayscale_input,
             overlap_input,
+            mode_input,
+            k_input,
         ]
         common_outputs = metric_outputs + [json_output]
 
         btn_run.click(
             fn=run_analysis,
-            inputs=common_inputs + [gr.State("top_n")],
-            outputs=common_outputs,
-        )
-
-        btn_all.click(
-            fn=run_analysis,
-            inputs=common_inputs + [gr.State("all")],
-            outputs=common_outputs,
-        )
-
-        btn_matrix.click(
-            fn=run_analysis,
-            inputs=common_inputs + [gr.State("matrix")],
+            inputs=common_inputs,
             outputs=common_outputs,
         )
 

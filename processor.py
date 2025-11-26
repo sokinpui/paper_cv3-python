@@ -337,3 +337,52 @@ class ImageProcessor:
         alpha = 0.6
         cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
         return img_np
+
+    def create_cluster_map(
+        self,
+        image: torch.Tensor,
+        units: list,
+        grid_shape: Tuple[int, int],
+        strides: Tuple[int, int],
+        unit_h: int,
+        unit_w: int,
+    ) -> np.ndarray:
+        """
+        Creates a visualization where each unit is colored by its cluster_id.
+        """
+        if image.dim() == 4:
+            image = image.squeeze(0)
+
+        img_np = image.detach().permute(1, 2, 0).cpu().numpy()
+        img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
+        H, W = img_np.shape[:2]
+
+        overlay = img_np.copy()
+        rows, cols = grid_shape
+        stride_h, stride_w = strides
+
+        # Distinct colors for clusters (BGR)
+        # K is usually small, define a palette
+        palette = [
+            (0, 255, 0),    # Green
+            (0, 0, 255),    # Red
+            (255, 0, 0),    # Blue
+            (0, 255, 255),  # Yellow
+            (255, 0, 255),  # Magenta
+            (255, 255, 0),  # Cyan
+            (128, 0, 128),  # Purple
+            (128, 128, 0),  # Teal
+        ]
+
+        for u in units:
+            if u.cluster_id < 0: continue
+            
+            color = palette[u.cluster_id % len(palette)]
+            y = u.row * stride_h if u.row < rows - 1 else H - unit_h
+            x = u.col * stride_w if u.col < cols - 1 else W - unit_w
+            
+            cv2.rectangle(overlay, (x, y), (x + unit_w, y + unit_h), color, -1)
+
+        alpha = 0.5
+        cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
+        return img_np
