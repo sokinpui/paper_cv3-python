@@ -21,54 +21,61 @@ class MetricStrategy:
 class SSIMMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
-        Computes structural dissimilarity (1 - SSIM) between all pairs.
-        Simplified SSIM for patch-wise comparison.
+        Computes Mean Structural Similarity (MSSIM) between all pairs.
+        Formula: SSIM(x,y) = l(x,y) * cs(x,y)
+        Averaged over channels.
         """
-        # Flatten spatial dims: (N, C, H*W)
         N, C, H, W = patches.shape
+        P = H * W
+
+        # Constants for SSIM (assuming range 0-1)
+        L_dyn = 1.0
+        K1 = 0.01
+        K2 = 0.03
+        C1 = (K1 * L_dyn) ** 2
+        C2 = (K2 * L_dyn) ** 2
+
+        # Reshape to (N, C, P)
         x = patches.reshape(N, C, -1)
 
-        # --- 1. Calculate Statistics ---
-        # Mean per channel: (N, C)
-        mu = x.mean(dim=2)
+        total_ssim = torch.zeros((N, N), device=patches.device)
 
-        # Centered data: (N, C, H*W)
-        x_centered = x - mu.unsqueeze(2)
+        for c in range(C):
+            # Extract channel: (N, P)
+            xc = x[:, c, :]
 
-        # Flatten C into the vector for Structure correlation (N, C*H*W)
-        # This ensures we check spatial structure across all channels
-        flat_centered = x_centered.reshape(N, -1)
+            # 1. Means (N, 1)
+            mu = xc.mean(dim=1, keepdim=True)
+            mu_sq = mu ** 2
 
-        # Covariance Matrix (N, N)
-        # sig_xy = E[(x-mux)(y-muy)]
-        sig_xy = (flat_centered @ flat_centered.T) / (H * W * C)
+            # 2. Covariance (N, N)
+            # Centered data
+            xc_centered = xc - mu
+            # E[(x-mux)(y-muy)]
+            sigma_xy = (xc_centered @ xc_centered.T) / P
 
-        # Variance (Diagonal of Covariance)
-        sig2 = sig_xy.diag().unsqueeze(1)  # (N, 1)
-        sig2_x = sig2
-        sig2_y = sig2.T
+            # Variance (N, 1)
+            sigma_sq = sigma_xy.diag().unsqueeze(1)
 
-        # --- 2. Structure & Contrast Term ---
-        C2 = 0.03**2
-        contrast_structure = (2 * sig_xy + C2) / (sig2_x + sig2_y + C2)
+            # 3. Luminance Term (N, N)
+            # (2 * mu_x * mu_y + C1) / (mu_x^2 + mu_y^2 + C1)
+            mu_x_mu_y = mu @ mu.T
+            mu_sq_sum = mu_sq + mu_sq.T
+            l_term = (2 * mu_x_mu_y + C1) / (mu_sq_sum + C1)
 
-        # --- 3. Color Term (Cosine Similarity) ---
-        # Compares the "Direction" of the Mean Vector (Color ratios).
-        # Ignores "Magnitude" (Brightness/Shadows).
-        # If RGB is used, this distinguishes R vs G vs B while treating Dark Red == Bright Red.
+            # 4. Contrast-Structure Term (N, N)
+            # (2 * sigma_xy + C2) / (sigma_x^2 + sigma_y^2 + C2)
+            sigma_sq_sum = sigma_sq + sigma_sq.T
+            cs_term = (2 * sigma_xy + C2) / (sigma_sq_sum + C2)
 
-        # Normalize mean vectors (N, C)
-        mu_norm = torch.linalg.norm(mu, dim=1, keepdim=True) + 1e-8
-        mu_dir = mu / mu_norm
+            # Combine
+            total_ssim += l_term * cs_term
 
-        # Cosine Similarity (N, N) -> Range [0, 1] for non-negative RGB
-        color_sim = mu_dir @ mu_dir.T
+        # Average over channels
+        mean_ssim = total_ssim / C
 
-        # --- 4. Combine ---
-        # Combined Similarity = Structure * Color
-        # Both terms are roughly [0, 1].
-        # Distance = 1 - Similarity
-        return 1.0 - (contrast_structure * color_sim)
+        # Return Distance (1 - Similarity)
+        return 1.0 - mean_ssim
 
 
 class CIELabMetric(MetricStrategy):
