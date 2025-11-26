@@ -58,6 +58,7 @@ def run_analysis(
     cluster_show_scores,
     cluster_metric,
     cluster_threshold_n,
+    selected_distance_functions,
 ):
     """
     The core function called when user clicks 'Run Detection'
@@ -77,7 +78,8 @@ def run_analysis(
     # Initialize output structure: [Img, Perf] per metric + [JSON]
     num_metrics = len(METRICS_CONFIG)
     # Fill with None/Empty strings
-    current_outputs = [None] * (num_metrics * 2) + [""]
+    # Structure: [Header, Image, Perf] per metric
+    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + [""]
 
     if image_path is None:
         current_outputs[-1] = "Please upload an image."
@@ -110,6 +112,13 @@ def run_analysis(
         all_stats_collection = []
 
         for i, (name, MetricClass) in enumerate(METRICS_CONFIG):
+            base_idx = i * 3
+            if name not in selected_distance_functions:
+                current_outputs[base_idx] = gr.update(visible=False)
+                current_outputs[base_idx + 1] = gr.update(visible=False)
+                current_outputs[base_idx + 2] = gr.update(visible=False)
+                continue
+
             t_metric_start = time.time()
 
             # Instantiate and Analyze
@@ -180,9 +189,9 @@ def run_analysis(
             )
 
             # Update specific slots in the output list
-            base_idx = i * 2
-            current_outputs[base_idx] = result_img
-            current_outputs[base_idx + 1] = perf_text
+            current_outputs[base_idx] = gr.update(visible=True)
+            current_outputs[base_idx + 1] = gr.update(visible=True, value=result_img)
+            current_outputs[base_idx + 2] = gr.update(visible=True, value=perf_text)
 
             # Keep top 1 stat for JSON just to show something valid
             all_stats_collection.extend([s.to_dict() for s in stats[:1]])
@@ -224,6 +233,14 @@ def create_ui(input_dir=None):
                 )
                 with gr.Row():
                     btn_run = gr.Button("🚀 Run Analysis", variant="primary")
+
+                # Distance Function Selection
+                metric_names = [m[0] for m in METRICS_CONFIG]
+                distance_funcs_input = gr.CheckboxGroup(
+                    choices=metric_names,
+                    value=metric_names,
+                    label="Distance Functions",
+                )
 
                 gr.Markdown("### Settings")
 
@@ -297,7 +314,7 @@ def create_ui(input_dir=None):
                 cluster_metric_input = gr.Dropdown(
                     choices=["mean", "std_dev", "threshold"],
                     value="mean",
-                    label="Clustering Metric",
+                    label="Clustering Score",
                     visible=True,
                 )
 
@@ -359,15 +376,15 @@ def create_ui(input_dir=None):
                 )
 
             with gr.Column(scale=3):
-                gr.Markdown("### 📊 Analysis Results (Metric by Metric)")
+                gr.Markdown("### 📊 Analysis Results (By Distance Function)")
 
                 # Dynamically create output rows for each metric
                 metric_outputs = []
                 for name, _ in METRICS_CONFIG:
-                    gr.Markdown(f"**{name}**")
+                    m_header = gr.Markdown(f"**{name}**")
                     m_img = gr.Image(label=f"Result ({name})", type="numpy")
                     m_perf = gr.Markdown(value="Waiting...")
-                    metric_outputs.extend([m_img, m_perf])
+                    metric_outputs.extend([m_header, m_img, m_perf])
 
                 # perf_output = gr.Markdown() # Removed global perf
                 json_output = gr.Code(language="json", label="Statistics")
@@ -386,6 +403,7 @@ def create_ui(input_dir=None):
             cluster_show_scores,
             cluster_metric_input,
             cluster_threshold_n_input,
+            distance_funcs_input,
         ]
         common_outputs = metric_outputs + [json_output]
 
