@@ -24,6 +24,41 @@ class PatchAnalyzer:
     def __init__(self, metric_strategy):
         self.metric = metric_strategy
 
+    def _kmeans(self, data: torch.Tensor, k: int, max_iter: int = 20) -> torch.Tensor:
+        """
+        Generic K-Means implementation.
+        data: (N, D)
+        Returns: labels (N,)
+        """
+        N = data.shape[0]
+        if N < k:
+            return torch.zeros(N, dtype=torch.long, device=data.device)
+
+        # 1. Initialize centroids (randomly select k points)
+        indices = torch.randperm(N, device=data.device)[:k]
+        centroids = data[indices].clone()
+
+        labels = torch.zeros(N, dtype=torch.long, device=data.device)
+
+        for _ in range(max_iter):
+            # 2. Assign labels: |x - c|
+            # data (N, D), centroids (K, D) -> dists (N, K)
+            dists = torch.cdist(data, centroids)
+            new_labels = torch.argmin(dists, dim=1)
+
+            if torch.equal(labels, new_labels):
+                break
+            labels = new_labels
+
+            # 3. Update centroids
+            for i in range(k):
+                mask = labels == i
+                if mask.any():
+                    centroids[i] = data[mask].mean(dim=0)
+                # else keep old
+
+        return labels
+
     def analyze(
         self,
         patches: torch.Tensor,
@@ -31,6 +66,8 @@ class PatchAnalyzer:
         top_n: int,
         sort_by: str = "mean",
         ascending: bool = True,
+        cluster_on_matrix: bool = False,
+        k: int = 2,
     ) -> List[UnitStats]:
         """
         patches: (N, C, H, W)
@@ -42,6 +79,11 @@ class PatchAnalyzer:
         # 1. Compute Similarity/Distance Matrix (N, N)
         # This is the heavy GPU operation
         matrix = self.metric.compute(patches)
+
+        # Optional: Cluster on the distance matrix (rows as features)
+        matrix_labels = None
+        if cluster_on_matrix and k > 1:
+            matrix_labels = self._kmeans(matrix, k)
 
         # 2. Mask diagonal (self-comparison) to avoid skewing stats
         # We set diagonal to NaN so we can ignore it in stats
@@ -98,6 +140,7 @@ class PatchAnalyzer:
                 std_dev=stds[i].item(),
                 min_score=mins[i].item(),
                 max_score=maxs[i].item(),
+                cluster_id=matrix_labels[i].item() if matrix_labels is not None else -1,
             )
             results.append(stats)
 
@@ -127,28 +170,7 @@ class PatchAnalyzer:
                 values.append(s.mean)
 
         data = torch.tensor(values, dtype=torch.float32).view(-1, 1)
-        
-        # Simple K-Means implementation
-        # 1. Initialize centroids (randomly select k points)
-        N = data.shape[0]
-        indices = torch.randperm(N)[:k]
-        centroids = data[indices].clone()
-
-        for _ in range(20):  # Max iterations
-            # 2. Assign labels: |x - c|
-            # (N, 1) - (1, K) -> (N, K)
-            dists = torch.abs(data - centroids.T)
-            labels = torch.argmin(dists, dim=1)
-
-            # 3. Update centroids
-            new_centroids = []
-            for i in range(k):
-                mask = labels == i
-                if mask.any():
-                    new_centroids.append(data[mask].mean())
-                else:
-                    new_centroids.append(centroids[i]) # Keep old if empty
-            centroids = torch.tensor(new_centroids).view(-1, 1)
+        labels = self._kmeans(data, k)
 
         # Assign back to stats
         for i, s in enumerate(stats):

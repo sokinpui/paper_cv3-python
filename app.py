@@ -98,6 +98,7 @@ def run_analysis(
     """
     The core function called when user clicks 'Run Detection'
     action_mode: 'top_n', 'all', 'heatmap', 'clustering'
+    action_mode_ui: 'Top N', 'All Units', 'Heatmap', 'Clustering', 'Clustering (Matrix)'
     """
     # Map UI string to internal mode
     mode_map = {
@@ -105,6 +106,7 @@ def run_analysis(
         "All Units": "all",
         "Heatmap": "heatmap",
         "Clustering": "clustering",
+        "Clustering (Matrix)": "clustering2",
     }
     action_mode = mode_map.get(action_mode_ui, "top_n")
 
@@ -145,7 +147,7 @@ def run_analysis(
         t_det_start = time.time()
 
         # Determine effective top_n
-        if action_mode in ["all", "heatmap", "clustering"]:
+        if action_mode in ["all", "heatmap", "clustering", "clustering2"]:
             # Use a number larger than any possible grid count
             actual_top_n = 999999
         else:
@@ -160,15 +162,20 @@ def run_analysis(
             metric = MetricClass()
             analyzer = PatchAnalyzer(metric)
 
+            # If clustering2, we do clustering inside analyze on the matrix
+            do_matrix_cluster = (action_mode == "clustering2")
+
             stats = analyzer.analyze(
                 patches,
                 grid_shape,
                 top_n=actual_top_n,
                 sort_by=sort_by,
                 ascending=not descending,
+                cluster_on_matrix=do_matrix_cluster,
+                k=int(k_clusters),
             )
 
-            # Perform Clustering if requested
+            # Perform Clustering (Stats-based) if requested
             if action_mode == "clustering":
                 stats = analyzer.cluster_stats(
                     stats,
@@ -178,7 +185,7 @@ def run_analysis(
                 )
 
             # Generate Result Image based on Mode
-            if action_mode == "clustering":
+            if action_mode in ["clustering", "clustering2"]:
                 result_img = processor.create_cluster_map(
                     image_tensor,
                     stats,
@@ -270,7 +277,7 @@ def create_ui(input_dir=None):
             with gr.Column(scale=1):
                 # Action Buttons
                 mode_input = gr.Radio(
-                    choices=["Top N", "All Units", "Heatmap", "Clustering"],
+                    choices=["Top N", "All Units", "Heatmap", "Clustering", "Clustering (Matrix)"],
                     value="Clustering",
                     label="Analysis Mode",
                 )
@@ -406,15 +413,16 @@ def create_ui(input_dir=None):
                     is_all = mode == "All Units"
                     is_heatmap = mode == "Heatmap"
                     is_cluster = mode == "Clustering"
+                    is_cluster2 = mode == "Clustering (Matrix)"
                     is_threshold = is_cluster and (metric == "threshold")
 
                     return (
                         gr.update(visible=is_top_n),  # top_n
                         gr.update(visible=(is_top_n or is_all or is_heatmap)),  # sort
                         gr.update(visible=(is_top_n or is_all)),  # desc
-                        gr.update(visible=is_cluster),  # k
-                        gr.update(visible=is_cluster),  # show_scores
-                        gr.update(visible=is_cluster),  # cluster_metric
+                        gr.update(visible=(is_cluster or is_cluster2)),  # k
+                        gr.update(visible=(is_cluster or is_cluster2)),  # show_scores
+                        gr.update(visible=is_cluster),  # cluster_metric (only for stats clustering)
                         gr.update(visible=is_threshold),  # threshold_n
                     )
 
