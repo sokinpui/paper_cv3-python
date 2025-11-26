@@ -33,6 +33,7 @@ METRICS_CONFIG = [
     ("Texture & Color (Defects)", TextureColorMetric),
     ("Color Histogram", HistogramMetric),
     ("LAB Moments (Color Stats)", LabMomentsMetric),
+    ("CIELAB", CIELabMetric),
 ]
 
 # 1. Initialize CUDA Device
