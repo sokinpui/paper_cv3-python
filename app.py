@@ -73,7 +73,7 @@ def run_analysis(
     """
     The core function called when user clicks 'Run Detection'
     action_mode: 'top_n', 'all', 'heatmap', 'clustering'
-    action_mode_ui: 'Top N', 'All Units', 'Heatmap', 'Clustering', 'Clustering (Matrix)'
+    action_mode_ui: 'Top N', 'All Units', 'Heatmap', 'Clustering', 'Clustering (K-means)'
     """
     # Map UI string to internal mode
     mode_map = {
@@ -81,7 +81,7 @@ def run_analysis(
         "All Units": "all",
         "Heatmap": "heatmap",
         "Clustering": "clustering",
-        "Clustering (Matrix)": "clustering2",
+        "Clustering (K-means)": "clustering2",
         "Clustering (Hierarchical)": "clustering_hierarchical",
     }
     action_mode = mode_map.get(action_mode_ui, "top_n")
@@ -255,14 +255,10 @@ def create_ui(input_dir=None):
                 # Action Buttons
                 mode_input = gr.Radio(
                     choices=[
-                        "Top N",
-                        "All Units",
-                        "Heatmap",
-                        "Clustering",
-                        "Clustering (Matrix)",
+                        "Clustering (K-means)",
                         "Clustering (Hierarchical)",
                     ],
-                    value="Clustering",
+                    value="Clustering (K-means)",
                     label="Analysis Mode",
                 )
                 with gr.Row():
@@ -272,7 +268,7 @@ def create_ui(input_dir=None):
                 metric_names = [m[0] for m in METRICS_CONFIG]
                 distance_funcs_input = gr.CheckboxGroup(
                     choices=metric_names,
-                    value=metric_names,
+                    value=["Gradient & Color (Lines)"],
                     label="Distance Functions",
                 )
 
@@ -349,7 +345,7 @@ def create_ui(input_dir=None):
                     choices=["mean", "std_dev", "threshold"],
                     value="mean",
                     label="Clustering Score",
-                    visible=True,
+                    visible=False,
                 )
 
                 cluster_threshold_n_input = gr.Number(
@@ -368,7 +364,7 @@ def create_ui(input_dir=None):
                     is_all = mode == "All Units"
                     is_heatmap = mode == "Heatmap"
                     is_cluster = mode == "Clustering"
-                    is_cluster2 = mode == "Clustering (Matrix)"
+                    is_cluster2 = mode == "Clustering (K-means)"
                     is_cluster_h = mode == "Clustering (Hierarchical)"
                     is_threshold = is_cluster and (metric == "threshold")
 
