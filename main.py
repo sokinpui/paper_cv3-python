@@ -177,7 +177,7 @@ def main():
         print(f"Extracted {patches.shape[0]} units. Grid: {grid_shape}")
         print("Computing pairwise matrix and statistics...")
 
-        top_units = analyzer.analyze(
+        top_units, _ = analyzer.analyze(
             patches,
             grid_shape,
             top_n=args.top_n,

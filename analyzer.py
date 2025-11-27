@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -125,7 +125,7 @@ class PatchAnalyzer:
         cluster_on_matrix: bool = False,
         k: int = 2,
         clustering_algorithm: str = "kmeans",
-    ) -> List[UnitStats]:
+    ) -> Tuple[List[UnitStats], torch.Tensor]:
         """
         patches: (N, C, H, W)
         """
@@ -208,7 +208,7 @@ class PatchAnalyzer:
         # 5. Rank
         results.sort(key=lambda x: getattr(x, sort_by), reverse=not ascending)
 
-        return results[:top_n]
+        return results[:top_n], matrix
 
     def cluster_stats(
         self,

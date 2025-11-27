@@ -56,6 +56,99 @@ except Exception as e:
     device = torch.device("cpu")
 
 
+def find_unit_index_from_click(x, y, grid_info):
+    """
+    Finds the unit index closest to the click (x, y).
+    grid_info: dict with grid_shape, strides, unit_size, img_shape
+    """
+    rows, cols = grid_info["grid_shape"]
+    stride_h, stride_w = grid_info["strides"]
+    unit_h, unit_w = grid_info["unit_size"]
+    H, W = grid_info["img_shape"]
+
+    best_idx = -1
+    min_dist_sq = float("inf")
+
+    # Iterate all units to find the one containing the click or closest to center
+    # Index i = r * cols + c
+    for r in range(rows):
+        for c in range(cols):
+            # Calculate top-left (bx, by)
+            if r == rows - 1:
+                by = H - unit_h
+            else:
+                by = r * stride_h
+
+            if c == cols - 1:
+                bx = W - unit_w
+            else:
+                bx = c * stride_w
+
+            # Check if click is strictly inside box
+            if bx <= x < bx + unit_w and by <= y < by + unit_h:
+                # Calculate distance to center for tie-breaking overlapping units
+                cx = bx + unit_w / 2
+                cy = by + unit_h / 2
+                dist_sq = (x - cx) ** 2 + (y - cy) ** 2
+
+                if dist_sq < min_dist_sq:
+                    min_dist_sq = dist_sq
+                    best_idx = r * cols + c
+
+    return best_idx
+
+
+def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
+    """
+    Handles click on the result image.
+    Populates Vector A or Vector B with the distance vector of the clicked unit.
+    """
+    if not state or metric_name not in state:
+        return vec_a, vec_b
+
+    data = state[metric_name]
+    # evt.index is [x, y]
+    idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
+
+    if idx < 0:
+        return vec_a, vec_b
+
+    matrix = data["matrix"]
+    if idx >= len(matrix):
+        return vec_a, vec_b
+
+    # Get row vector (distances from this unit to all others)
+    vector = matrix[idx]
+    # Replace NaN (self-comparison) with 0.0
+    vector = np.nan_to_num(vector, nan=0.0)
+
+    # Format as string for the text box
+    # Using 4 decimal places for conciseness
+    vec_str = ", ".join([f"{x:.4f}" for x in vector])
+
+    # Logic: Fill A if empty. If A is full, fill B.
+    # If B is also full, overwrite B (most recent click replaces B).
+    if not vec_a:
+        # Fill A
+        return vec_str, vec_b
+    elif not vec_b:
+        # Fill B
+        return vec_a, vec_str
+    else:
+        # Overwrite B
+        return vec_a, vec_str
+
+
+def create_click_handler(metric_name):
+    """
+    Creates a closure for the click handler to avoid partial introspection issues
+    in Gradio. Captures metric_name.
+    """
+    def handler(evt: gr.SelectData, state, vec_a, vec_b):
+        return on_unit_click(metric_name, evt, state, vec_a, vec_b)
+    return handler
+
+
 def run_analysis(
     image_path,
     height,
@@ -70,6 +163,7 @@ def run_analysis(
     cluster_metric,
     cluster_threshold_n,
     selected_distance_functions,
+    current_state,
 ):
     """
     The core function called when user clicks 'Run Detection'
@@ -91,12 +185,15 @@ def run_analysis(
     num_metrics = len(METRICS_CONFIG)
     # Fill with None/Empty strings
     # Structure: [Header, Image, Perf] per metric
-    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + [""]
+    # + [JSON] + [State]
+    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + ["", current_state]
 
     if image_path is None:
-        current_outputs[-1] = "Please upload an image."
+        current_outputs[-2] = "Please upload an image."
         yield tuple(current_outputs)
         return
+
+    new_state = {}
 
     try:
         # Setup Components
@@ -105,6 +202,7 @@ def run_analysis(
         # Pipeline
         # 1. Load
         image_tensor = processor.load_image(image_path)
+        img_h, img_w = image_tensor.shape[2], image_tensor.shape[3]
 
         # 2. Tile
         patches, grid_shape, strides = processor.extract_patches(
@@ -155,7 +253,7 @@ def run_analysis(
             # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
             k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
 
-            stats = analyzer.analyze(
+            stats, matrix = analyzer.analyze(
                 patches,
                 grid_shape,
                 top_n=actual_top_n,
@@ -216,6 +314,15 @@ def run_analysis(
                 f"{cps:,.0f} pairs/sec"
             )
 
+            # Store Data in State
+            new_state[name] = {
+                "matrix": matrix.detach().cpu().numpy(),  # Store as numpy
+                "grid_shape": grid_shape,
+                "strides": strides,
+                "unit_size": (int(height), int(width)),
+                "img_shape": (img_h, img_w),
+            }
+
             # Update specific slots in the output list
             current_outputs[base_idx] = gr.update(visible=True)
             current_outputs[base_idx + 1] = gr.update(visible=True, value=result_img)
@@ -225,9 +332,10 @@ def run_analysis(
             all_stats_collection.extend([s.to_dict() for s in stats[:1]])
 
             # Update JSON (accumulated)
-            current_outputs[-1] = json.dumps(
+            current_outputs[-2] = json.dumps(
                 all_stats_collection[:actual_top_n], indent=4
             )
+            current_outputs[-1] = new_state
 
             # Yield current state
             yield tuple(current_outputs)
@@ -237,17 +345,25 @@ def run_analysis(
 
         traceback.print_exc()
         # Yield error in the JSON field
-        current_outputs[-1] = f"Error: {str(e)}"
+        current_outputs[-2] = f"Error: {str(e)}"
         yield tuple(current_outputs)
 
 
-def calculate_vector_distance(vec_a, vec_b, metric):
+def calculate_vector_distance(vec_a, vec_b):
     if not vec_a or not vec_b:
         return ""
     try:
+
         def parse(s):
-            s = s.strip().replace('[', '').replace(']', '').replace('(', '').replace(')', '')
-            return np.array([float(x) for x in s.split(',') if x.strip()])
+            s = (
+                s.strip()
+                .replace("[", "")
+                .replace("]", "")
+                .replace("(", "")
+                .replace(")", "")
+            )
+            arr = np.array([float(x) for x in s.split(",") if x.strip()])
+            return np.nan_to_num(arr, nan=0.0)
 
         v1 = parse(vec_a)
         v2 = parse(vec_b)
@@ -255,23 +371,34 @@ def calculate_vector_distance(vec_a, vec_b, metric):
         if v1.shape != v2.shape:
             return f"Shape Mismatch: {v1.shape} vs {v2.shape}"
 
-        if metric == "Euclidean":
-            val = np.linalg.norm(v1 - v2)
-        elif metric == "Manhattan":
-            val = np.sum(np.abs(v1 - v2))
-        elif metric == "Cosine":
-            n1 = np.linalg.norm(v1)
-            n2 = np.linalg.norm(v2)
-            if n1 == 0 or n2 == 0:
-                val = 1.0
-            else:
-                val = 1.0 - (np.dot(v1, v2) / (n1 * n2))
-        return f"{val:.6f}"
+        # 1. Euclidean
+        dist_euc = np.linalg.norm(v1 - v2)
+
+        # 2. Manhattan
+        dist_man = np.sum(np.abs(v1 - v2))
+
+        # 3. Cosine
+        n1 = np.linalg.norm(v1)
+        n2 = np.linalg.norm(v2)
+        if n1 == 0 or n2 == 0:
+            dist_cos = 1.0
+        else:
+            dist_cos = 1.0 - (np.dot(v1, v2) / (n1 * n2))
+
+        return (
+            f"Euclidean: {dist_euc:.6f}\n"
+            f"Cosine:    {dist_cos:.6f}\n"
+            f"Manhattan: {dist_man:.6f}"
+        )
     except Exception as e:
         return f"Error: {e}"
 
 
 # --- Build the UI ---
+
+
+def clear_vector_inputs():
+    return "", "", ""
 
 
 def create_ui(input_dir=None):
@@ -448,11 +575,14 @@ def create_ui(input_dir=None):
 
                 # Dynamically create output rows for each metric
                 metric_outputs = []
+                metric_images = []  # Keep track of image components to bind events
+
                 for name, _ in METRICS_CONFIG:
                     m_header = gr.Markdown(f"**{name}**")
                     m_img = gr.Image(label=f"Result ({name})", type="numpy")
                     m_perf = gr.Markdown(value="Waiting...")
                     metric_outputs.extend([m_header, m_img, m_perf])
+                    metric_images.append((name, m_img))
 
                 gr.Markdown("### 📐 Vector Calculator")
                 with gr.Group():
@@ -460,13 +590,21 @@ def create_ui(input_dir=None):
                         vc_a = gr.Textbox(label="Vector A", placeholder="1.0, 2.0, ...")
                         vc_b = gr.Textbox(label="Vector B", placeholder="3.0, 4.0, ...")
                     with gr.Row():
-                        vc_metric = gr.Dropdown(["Euclidean", "Cosine", "Manhattan"], value="Euclidean", label="Metric")
-                        vc_btn = gr.Button("Calculate Distance")
-                    vc_res = gr.Textbox(label="Result", lines=1)
-                    vc_btn.click(calculate_vector_distance, inputs=[vc_a, vc_b, vc_metric], outputs=vc_res)
+                        vc_btn = gr.Button("Calculate Distance", variant="primary")
+                        vc_clear = gr.Button("Clear")
+                    vc_res = gr.Textbox(label="Results", lines=4)
+                    vc_btn.click(
+                        calculate_vector_distance,
+                        inputs=[vc_a, vc_b],
+                        outputs=vc_res,
+                    )
+                    vc_clear.click(
+                        clear_vector_inputs, inputs=None, outputs=[vc_a, vc_b, vc_res]
+                    )
 
                 # perf_output = gr.Markdown() # Removed global perf
                 json_output = gr.Code(language="json", label="Statistics")
+                analysis_state = gr.State({})  # Store matrix data per session
 
         # Common inputs for all buttons
         common_inputs = [
@@ -483,14 +621,23 @@ def create_ui(input_dir=None):
             cluster_metric_input,
             cluster_threshold_n_input,
             distance_funcs_input,
+            analysis_state,
         ]
-        common_outputs = metric_outputs + [json_output]
+        common_outputs = metric_outputs + [json_output, analysis_state]
 
         btn_run.click(
             fn=run_analysis,
             inputs=common_inputs,
             outputs=common_outputs,
         )
+
+        # Wire Select/Click Events for Result Images
+        for name, img_comp in metric_images:
+            img_comp.select(
+                fn=create_click_handler(name),
+                inputs=[analysis_state, vc_a, vc_b],
+                outputs=[vc_a, vc_b]
+            )
 
     return demo
 
