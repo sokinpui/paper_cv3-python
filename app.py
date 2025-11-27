@@ -1,6 +1,5 @@
 import argparse
 import glob
-import json
 import os
 import sys
 import time
@@ -89,11 +88,11 @@ def run_analysis(
     # Initialize output structure: [Img, Perf] per metric + [JSON]
     num_metrics = len(METRICS_CONFIG)
     # Fill with None/Empty strings
-    # Structure: [Header, Image, Perf] per metric
-    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + [""]
+    # Structure: [Header, Image, Perf] per metric (No JSON at end)
+    current_outputs = [gr.update(visible=False)] * (num_metrics * 3)
 
     if image_path is None:
-        current_outputs[-1] = "Please upload an image."
+        # No JSON output to update error message, just yield empty
         yield tuple(current_outputs)
         return
 
@@ -125,8 +124,6 @@ def run_analysis(
             actual_top_n = 999999
         else:
             actual_top_n = int(top_n)
-
-        all_stats_collection = []
 
         for i, (name, MetricClass) in enumerate(METRICS_CONFIG):
             base_idx = i * 3
@@ -230,14 +227,6 @@ def run_analysis(
             current_outputs[base_idx + 1] = gr.update(visible=True, value=result_html)
             current_outputs[base_idx + 2] = gr.update(visible=True, value=perf_text)
 
-            # Keep top 1 stat for JSON just to show something valid
-            all_stats_collection.extend([s.to_dict() for s in stats[:1]])
-
-            # Update JSON (accumulated)
-            current_outputs[-1] = json.dumps(
-                all_stats_collection[:actual_top_n], indent=4
-            )
-
             # Yield current state
             yield tuple(current_outputs)
 
@@ -245,9 +234,7 @@ def run_analysis(
         import traceback
 
         traceback.print_exc()
-        # Yield error in the JSON field
-        current_outputs[-1] = f"Error: {str(e)}"
-        yield tuple(current_outputs)
+        # Just stop yielding on error
 
 
 # --- Build the UI ---
@@ -438,7 +425,6 @@ def create_ui(input_dir=None):
                     metric_outputs.extend([m_header, m_img, m_perf])
 
                 # perf_output = gr.Markdown() # Removed global perf
-                json_output = gr.Code(language="json", label="Statistics")
 
         # Common inputs for all buttons
         common_inputs = [
@@ -456,7 +442,7 @@ def create_ui(input_dir=None):
             cluster_threshold_n_input,
             distance_funcs_input,
         ]
-        common_outputs = metric_outputs + [json_output]
+        common_outputs = metric_outputs
 
         btn_run.click(
             fn=run_analysis,

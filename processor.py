@@ -1,4 +1,5 @@
 import base64
+import uuid
 from typing import List, Tuple
 
 import cv2
@@ -486,22 +487,48 @@ class ImageProcessor:
         rows, cols = grid_shape
         stride_h, stride_w = strides
 
+        # Generate a unique ID for this block to scope the JS events
+        block_id = str(uuid.uuid4())
+
         # SVG Header
-        svg_parts = [
-            f'<svg viewBox="0 0 {W} {H}" style="width: 100%; height: auto;" xmlns="http://www.w3.org/2000/svg">',
-            f'<image href="data:image/png;base64,{img_b64}" width="{W}" height="{H}" />'
-        ]
+        html_parts = [f'<div id="container-{block_id}" class="unit-analysis-container">']
+        
+        svg_parts = [f'<svg viewBox="0 0 {W} {H}" style="width: 100%; height: auto; cursor: crosshair;" xmlns="http://www.w3.org/2000/svg">']
+        svg_parts.append(f'<image href="data:image/png;base64,{img_b64}" width="{W}" height="{H}" />')
 
         for u in units:
             # Calculate coords
             y = H - unit_h if u.row == rows - 1 else u.row * stride_h
             x = W - unit_w if u.col == cols - 1 else u.col * stride_w
             
-            tooltip = f"Unit #{u.index}\nRow: {u.row}, Col: {u.col}\nMean: {u.mean:.4f}\nMedian: {u.median:.4f}\nStd: {u.std_dev:.4f}\nMin: {u.min_score:.4f}\nMax: {u.max_score:.4f}"
+            # Prepare details HTML
+            details_html = (
+                f"<b>Unit #{u.index}</b><br>"
+                f"Position: Row {u.row}, Col {u.col}<br>"
+                f"Mean: {u.mean:.4f} | Median: {u.median:.4f}<br>"
+                f"Std Dev: {u.std_dev:.4f}<br>"
+                f"Range: [{u.min_score:.4f}, {u.max_score:.4f}]"
+            )
             if u.cluster_id != -1:
-                tooltip += f"\nCluster: {u.cluster_id}"
+                details_html += f"<br>Cluster ID: {u.cluster_id}"
+            
+            # Escape for JS string
+            details_safe = details_html.replace("'", "&apos;")
+            js_click = f"document.getElementById('details-{block_id}').innerHTML = '{details_safe}'; document.getElementById('details-{block_id}').style.display = 'block';"
 
-            svg_parts.append(f'<rect x="{x}" y="{y}" width="{unit_w}" height="{unit_h}" fill="transparent" stroke="none"><title>{tooltip}</title></rect>')
+            tooltip = f"Unit #{u.index} (Click for details)"
+            svg_parts.append(f'<rect x="{x}" y="{y}" width="{unit_w}" height="{unit_h}" fill="transparent" stroke="none" onclick="{js_click}"><title>{tooltip}</title></rect>')
 
         svg_parts.append('</svg>')
-        return "".join(svg_parts)
+        html_parts.append("".join(svg_parts))
+
+        # Details Box
+        html_parts.append(
+            f'<div id="details-{block_id}" style="margin-top: 8px; padding: 10px; '
+            f'background-color: #f0f2f6; border-radius: 4px; border: 1px solid #e5e7eb; '
+            f'font-family: monospace; display: none;">'
+            f'</div>'
+        )
+        html_parts.append('</div>')
+
+        return "".join(html_parts)
