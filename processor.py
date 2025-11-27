@@ -475,14 +475,13 @@ class ImageProcessor:
         Wraps the image in an SVG with transparent rectangles for tooltips.
         """
         # Encode image to base64 PNG
-        # cv2 expects BGR
         img_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
         success, buffer = cv2.imencode(".png", img_bgr)
         if not success:
             return "<div>Error encoding image</div>"
-        
+
         img_b64 = base64.b64encode(buffer).decode("utf-8")
-        
+
         H, W = image_rgb.shape[:2]
         rows, cols = grid_shape
         stride_h, stride_w = strides
@@ -491,44 +490,80 @@ class ImageProcessor:
         block_id = str(uuid.uuid4())
 
         # SVG Header
-        html_parts = [f'<div id="container-{block_id}" class="unit-analysis-container">']
-        
-        svg_parts = [f'<svg viewBox="0 0 {W} {H}" style="width: 100%; height: auto; cursor: crosshair;" xmlns="http://www.w3.org/2000/svg">']
-        svg_parts.append(f'<image href="data:image/png;base64,{img_b64}" width="{W}" height="{H}" />')
+        html_parts = [
+            f'<div id="container-{block_id}" class="unit-analysis-container">'
+        ]
+
+        svg_parts = [
+            f'<svg viewBox="0 0 {W} {H}" style="width: 100%; height: auto; cursor: crosshair;" xmlns="http://www.w3.org/2000/svg">'
+        ]
+        svg_parts.append(
+            f'<image href="data:image/png;base64,{img_b64}" width="{W}" height="{H}" />'
+        )
 
         for u in units:
             # Calculate coords
             y = H - unit_h if u.row == rows - 1 else u.row * stride_h
             x = W - unit_w if u.col == cols - 1 else u.col * stride_w
-            
-            # Prepare details HTML
+
+            # --- START MODIFICATION ---
+            # Create full precision vector string for copying
+            full_vec_str = ", ".join([str(v) for v in (u.vector or [])])
+
+            # Build details HTML using double quotes for attributes
             details_html = (
-                f"<b>Unit #{u.index}</b><br>"
-                f"Position: Row {u.row}, Col {u.col}<br>"
-                f"Mean: {u.mean:.4f} | Median: {u.median:.4f}<br>"
-                f"Std Dev: {u.std_dev:.4f}<br>"
-                f"Range: [{u.min_score:.4f}, {u.max_score:.4f}]"
+                f"<b>Unit #{u.index}</b><br>" f"Position: Row {u.row}, Col {u.col}<br>"
             )
             if u.cluster_id != -1:
-                details_html += f"<br>Cluster ID: {u.cluster_id}"
-            
-            # Escape for JS string
-            details_safe = details_html.replace("'", "&apos;")
-            js_click = f"document.getElementById('details-{block_id}').innerHTML = '{details_safe}'; document.getElementById('details-{block_id}').style.display = 'block';"
+                details_html += f"Cluster ID: {u.cluster_id}<br>"
+
+            vec_id = f"vec-{block_id}-{u.index}"
+
+            # JS to copy text and provide feedback
+            js_copy = (
+                f"var t=document.getElementById('{vec_id}');"
+                f"t.select();"
+                f"if(navigator.clipboard){{"
+                f"navigator.clipboard.writeText(t.value).then(()=>{{this.innerHTML='✅';setTimeout(()=>this.innerHTML='📋',1500);}});"
+                f"}}else{{"
+                f"document.execCommand('copy');this.innerHTML='✅';setTimeout(()=>this.innerHTML='📋',1500);"
+                f"}}"
+            )
+
+            # Wrap vector in a textarea with select-on-click functionality
+            details_html += (
+                f"Vector (Distance to others): "
+                f'<button onclick="{js_copy}" style="cursor:pointer;font-size:10px;margin-left:5px;padding:2px 6px;border:1px solid #ccc;border-radius:3px;background:#fff" title="Copy to Clipboard">📋</button><br>'
+                f'<textarea id="{vec_id}" onclick="this.select();" readonly style="width: 96%; height: 80px; font-family: monospace; font-size: 10px; white-space: pre-wrap; margin-top: 4px;">'
+                f"[{full_vec_str}]"
+                f"</textarea>"
+            )
+
+            # Sanitize for JS string (escape single quotes and newlines)
+            details_js_safe = details_html.replace("'", "\\'").replace("\n", " ")
+
+            # Construct Javascript call
+            js_click = f"document.getElementById('details-{block_id}').innerHTML = '{details_js_safe}'; document.getElementById('details-{block_id}').style.display = 'block';"
+
+            # Sanitize for HTML attribute (escape double quotes)
+            js_click_attr = js_click.replace('"', "&quot;")
 
             tooltip = f"Unit #{u.index} (Click for details)"
-            svg_parts.append(f'<rect x="{x}" y="{y}" width="{unit_w}" height="{unit_h}" fill="transparent" stroke="none" onclick="{js_click}"><title>{tooltip}</title></rect>')
+            svg_parts.append(
+                f'<rect x="{x}" y="{y}" width="{unit_w}" height="{unit_h}" fill="transparent" stroke="none" onclick="{js_click_attr}"><title>{tooltip}</title></rect>'
+            )
+            # --- END MODIFICATION ---
 
-        svg_parts.append('</svg>')
+        svg_parts.append("</svg>")
         html_parts.append("".join(svg_parts))
 
         # Details Box
         html_parts.append(
             f'<div id="details-{block_id}" style="margin-top: 8px; padding: 10px; '
-            f'background-color: #f0f2f6; border-radius: 4px; border: 1px solid #e5e7eb; '
+            f"background-color: #f0f2f6; border-radius: 4px; border: 1px solid #e5e7eb; "
             f'font-family: monospace; display: none;">'
-            f'</div>'
+            f"</div>"
         )
-        html_parts.append('</div>')
+        html_parts.append("</div>")
 
         return "".join(html_parts)

@@ -54,6 +54,44 @@ except Exception as e:
     device = torch.device("cpu")
 
 
+def calculate_vector_distance(vec_a_str, vec_b_str):
+    try:
+        # Clean up string: remove brackets, newlines, "Vector:" prefix if copied accidentally
+        def parse_vec(s):
+            s = s.strip()
+            if s.startswith("Vector:"):
+                s = s[7:].strip()
+            s = s.replace('[', '').replace(']', '')
+            if not s: return []
+            return [float(x) for x in s.split(',')]
+
+        vec_a = parse_vec(vec_a_str)
+        vec_b = parse_vec(vec_b_str)
+
+        if len(vec_a) != len(vec_b):
+            return f"Error: Vector dimensions mismatch ({len(vec_a)} vs {len(vec_b)})"
+        
+        if len(vec_a) == 0:
+            return "Error: Empty vectors"
+
+        # Convert to tensor for easy calc
+        t_a = torch.tensor(vec_a)
+        t_b = torch.tensor(vec_b)
+
+        euclidean = torch.norm(t_a - t_b).item()
+        manhattan = torch.sum(torch.abs(t_a - t_b)).item()
+        cosine = torch.nn.functional.cosine_similarity(t_a.unsqueeze(0), t_b.unsqueeze(0)).item()
+
+        return (
+            f"Euclidean Distance: {euclidean:.6f}\n"
+            f"Manhattan Distance: {manhattan:.6f}\n"
+            f"Cosine Similarity:  {cosine:.6f}"
+        )
+
+    except Exception as e:
+        return f"Error parsing vectors: {str(e)}"
+
+
 def run_analysis(
     image_path,
     height,
@@ -419,6 +457,20 @@ def create_ui(input_dir=None):
                     m_img = gr.HTML()
                     m_perf = gr.Markdown(value="Waiting...")
                     metric_outputs.extend([m_header, m_img, m_perf])
+
+                gr.Markdown("### 🧮 Vector Distance Calculator")
+                with gr.Row():
+                    vec_a_input = gr.Textbox(label="Vector A", placeholder="Paste vector here (e.g. [0.1, 0.2, ...])", lines=2)
+                    vec_b_input = gr.Textbox(label="Vector B", placeholder="Paste vector here", lines=2)
+                
+                with gr.Row():
+                    calc_btn = gr.Button("Calculate Distance", variant="primary")
+                    clear_btn = gr.Button("Clear")
+
+                calc_output = gr.Textbox(label="Result", interactive=False, lines=4)
+                
+                calc_btn.click(calculate_vector_distance, inputs=[vec_a_input, vec_b_input], outputs=calc_output)
+                clear_btn.click(lambda: ("", "", ""), inputs=None, outputs=[vec_a_input, vec_b_input, calc_output])
 
                 # perf_output = gr.Markdown() # Removed global perf
 

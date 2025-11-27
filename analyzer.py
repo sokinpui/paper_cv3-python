@@ -15,6 +15,7 @@ class UnitStats:
     min_score: float
     max_score: float
     cluster_id: int = -1
+    vector: List[float] = None
 
     def to_dict(self):
         return self.__dict__
@@ -189,6 +190,8 @@ class PatchAnalyzer:
         # 4. Aggregate results
         results = []
         rows, cols = grid_shape
+        
+        vectors = data.nan_to_num(0.0).cpu().tolist()
 
         for i in range(N):
             r, c = divmod(i, cols)
@@ -202,6 +205,7 @@ class PatchAnalyzer:
                 min_score=mins[i].item(),
                 max_score=maxs[i].item(),
                 cluster_id=matrix_labels[i].item() if matrix_labels is not None else -1,
+                vector=vectors[i],
             )
             results.append(stats)
 
