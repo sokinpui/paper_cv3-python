@@ -209,6 +209,25 @@ class CIELabMetric(MetricStrategy):
         return torch.stack([l_chan, a_chan, b_chan], dim=1)
 
 
+class MSEMetric(MetricStrategy):
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes Mean Squared Error (MSE) between all pairs.
+        Input: (N, C, H, W) normalized [0,1]
+        Output: (N, N) matrix
+        """
+        N = patches.shape[0]
+        # Flatten to (N, D)
+        flat_vec = patches.reshape(N, -1)
+        num_pixels = flat_vec.shape[1]
+
+        # Pairwise Euclidean Distance (L2)
+        dists = torch.cdist(flat_vec, flat_vec, p=2)
+
+        # MSE = (L2^2) / D
+        return (dists**2) / num_pixels
+
+
 class PixelWiseColorMetric(CIELabMetric):
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -488,3 +507,140 @@ class HumanEyeColorMetric(MetricStrategy):
         b = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
 
         return torch.stack([L, a, b], dim=1)
+
+
+class CIEDE2000Metric(MetricStrategy):
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        # Convert RGB to Lab first
+        # We reuse the conversion logic from CIELabMetric
+        lab = CIELabMetric()._rgb_to_lab(patches)
+
+        # Take the MEAN of the unit colors to represent the unit
+        # (N, 3, H, W) -> (N, 3)
+        return lab.mean(dim=(2, 3))
+
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes the Pairwise CIEDE2000 Color Difference.
+        Input: (N, C, H, W)
+        Returns: (N, N) distance matrix
+        """
+        # (N, 3) features: L, a, b
+        lab = self.get_features(patches)
+        N = lab.shape[0]
+
+        # We need pairwise comparisons.
+        # Expand lab to (N, N, 3) for broadcasting
+        # lab1: (N, 1, 3), lab2: (1, N, 3)
+        lab1 = lab.unsqueeze(1)
+        lab2 = lab.unsqueeze(0)
+
+        L1, a1, b1 = lab1[..., 0], lab1[..., 1], lab1[..., 2]
+        L2, a2, b2 = lab2[..., 0], lab2[..., 1], lab2[..., 2]
+
+        # --- CIEDE2000 Implementation ---
+        # Constants
+        kL = 1.0
+        kC = 1.0
+        kH = 1.0
+
+        # 1. Calculate C' and h'
+        C1 = torch.sqrt(a1**2 + b1**2)
+        C2 = torch.sqrt(a2**2 + b2**2)
+        C_bar = (C1 + C2) / 2.0
+
+        G = 0.5 * (1 - torch.sqrt(C_bar**7 / (C_bar**7 + 25**7)))
+
+        a1_prime = (1 + G) * a1
+        a2_prime = (1 + G) * a2
+
+        C1_prime = torch.sqrt(a1_prime**2 + b1**2)
+        C2_prime = torch.sqrt(a2_prime**2 + b2**2)
+
+        # Compute h_prime (Hue angle)
+        # atan2 returns radians, we need degrees [0, 360]
+        h1_prime = torch.rad2deg(torch.atan2(b1, a1_prime)) % 360
+        h2_prime = torch.rad2deg(torch.atan2(b2, a2_prime)) % 360
+
+        # 2. Calculate Delta L', Delta C', Delta H'
+        delta_L_prime = L2 - L1
+        delta_C_prime = C2_prime - C1_prime
+
+        # Delta h_prime logic
+        h_diff = h2_prime - h1_prime
+        delta_h_prime = torch.zeros_like(h_diff)
+
+        mask_abs_leq_180 = torch.abs(h_diff) <= 180
+        mask_gt_180_pos = (torch.abs(h_diff) > 180) & (h2_prime <= h1_prime)
+        mask_gt_180_neg = (torch.abs(h_diff) > 180) & (h2_prime > h1_prime)
+
+        delta_h_prime[mask_abs_leq_180] = h_diff[mask_abs_leq_180]
+        delta_h_prime[mask_gt_180_pos] = h_diff[mask_gt_180_pos] + 360
+        delta_h_prime[mask_gt_180_neg] = h_diff[mask_gt_180_neg] - 360
+
+        # delta H' (Big H)
+        delta_H_prime = (
+            2
+            * torch.sqrt(C1_prime * C2_prime)
+            * torch.sin(torch.deg2rad(delta_h_prime / 2.0))
+        )
+
+        # 3. Calculate CIEDE2000 Terms
+        L_bar_prime = (L1 + L2) / 2.0
+        C_bar_prime = (C1_prime + C2_prime) / 2.0
+
+        # h_bar_prime logic
+        h_sum = h1_prime + h2_prime
+        h_bar_prime = torch.zeros_like(h_sum)
+
+        mask_c_zero = (C1_prime * C2_prime) == 0
+        mask_diff_leq_180 = (~mask_c_zero) & (torch.abs(h_diff) <= 180)
+        mask_diff_gt_180_sum_lt_360 = (
+            (~mask_c_zero) & (torch.abs(h_diff) > 180) & (h_sum < 360)
+        )
+        mask_diff_gt_180_sum_ge_360 = (
+            (~mask_c_zero) & (torch.abs(h_diff) > 180) & (h_sum >= 360)
+        )
+
+        h_bar_prime[mask_c_zero] = h_sum[
+            mask_c_zero
+        ]  # Should technically be sum, logic handles it
+        h_bar_prime[mask_diff_leq_180] = h_sum[mask_diff_leq_180] / 2.0
+        h_bar_prime[mask_diff_gt_180_sum_lt_360] = (
+            h_sum[mask_diff_gt_180_sum_lt_360] + 360
+        ) / 2.0
+        h_bar_prime[mask_diff_gt_180_sum_ge_360] = (
+            h_sum[mask_diff_gt_180_sum_ge_360] - 360
+        ) / 2.0
+
+        T = (
+            1
+            - 0.17 * torch.cos(torch.deg2rad(h_bar_prime - 30))
+            + 0.24 * torch.cos(torch.deg2rad(2 * h_bar_prime))
+            + 0.32 * torch.cos(torch.deg2rad(3 * h_bar_prime + 6))
+            - 0.20 * torch.cos(torch.deg2rad(4 * h_bar_prime - 63))
+        )
+
+        S_L = 1 + (0.015 * (L_bar_prime - 50) ** 2) / torch.sqrt(
+            20 + (L_bar_prime - 50) ** 2
+        )
+        S_C = 1 + 0.045 * C_bar_prime
+        S_H = 1 + 0.015 * C_bar_prime * T
+
+        R_T = (
+            -2
+            * torch.sqrt(C_bar_prime**7 / (C_bar_prime**7 + 25**7))
+            * torch.sin(
+                torch.deg2rad(60 * torch.exp(-(((h_bar_prime - 275) / 25) ** 2)))
+            )
+        )
+
+        # Final Calculation
+        delta_E = torch.sqrt(
+            (delta_L_prime / (kL * S_L)) ** 2
+            + (delta_C_prime / (kC * S_C)) ** 2
+            + (delta_H_prime / (kH * S_H)) ** 2
+            + R_T * (delta_C_prime / (kC * S_C)) * (delta_H_prime / (kH * S_H))
+        )
+
+        return delta_E

@@ -12,6 +12,7 @@ from metrics import (
     HumanEyeColorMetric,
     LabMomentsMetric,
     PixelWiseColorMetric,
+    MSEMetric,
     SSIMColorMixedMetric,
     SSIMHalfMetric,
     SSIMMetric,
@@ -46,6 +47,7 @@ def main():
             "hist",
             "pixel_color",
             "human_eye",
+            "mse",
         ],
         default="ssim",
         help="Comparison metric",
@@ -143,6 +145,8 @@ def main():
         metric = PixelWiseColorMetric()
     elif args.metric == "human_eye":
         metric = HumanEyeColorMetric()
+    elif args.metric == "mse":
+        metric = MSEMetric()
     else:
         metric = CIELabMetric()
 

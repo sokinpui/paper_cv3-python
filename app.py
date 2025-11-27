@@ -11,11 +11,13 @@ import torch
 
 from analyzer import PatchAnalyzer
 from metrics import (
+    CIEDE2000Metric,
     CIELabMetric,
     GradientColorMetric,
     HistogramMetric,
     HumanEyeColorMetric,
     LabMomentsMetric,
+    MSEMetric,
     PixelWiseColorMetric,
     SSIMColorMixedMetric,
     SSIMHalfMetric,
@@ -43,6 +45,8 @@ METRICS_CONFIG = [
     ("LAB Moments (Color Stats)", LabMomentsMetric),
     ("CIELAB", CIELabMetric),
     ("Pixel-wise Color (Full Lab)", PixelWiseColorMetric),
+    ("MSE (Mean Squared Error)", MSEMetric),
+    ("CIEDE2000 (Precise Color)", CIEDE2000Metric),
 ]
 
 # 1. Initialize CUDA Device
@@ -165,6 +169,9 @@ def run_analysis(
     cluster_metric,
     cluster_threshold_n,
     selected_distance_functions,
+    hierarchical_method,
+    dbscan_eps,
+    dbscan_min_samples,
     current_state,
 ):
     """
@@ -180,6 +187,8 @@ def run_analysis(
         "Clustering": "clustering",
         "Clustering (K-means)": "clustering2",
         "Clustering (Hierarchical)": "clustering_hierarchical",
+        "Clustering (Spectral)": "clustering_spectral",
+        "Clustering (DBSCAN)": "clustering_dbscan",
     }
     action_mode = mode_map.get(action_mode_ui, "top_n")
 
@@ -224,6 +233,8 @@ def run_analysis(
             "clustering",
             "clustering2",
             "clustering_hierarchical",
+            "clustering_spectral",
+            "clustering_dbscan",
         ]:
             # Use a number larger than any possible grid count
             actual_top_n = 999999
@@ -250,10 +261,16 @@ def run_analysis(
             do_matrix_cluster = action_mode in [
                 "clustering2",
                 "clustering_hierarchical",
+                "clustering_spectral",
+                "clustering_dbscan",
             ]
-            algo = (
-                "hierarchical" if action_mode == "clustering_hierarchical" else "kmeans"
-            )
+            algo = "kmeans"
+            if action_mode == "clustering_hierarchical":
+                algo = "hierarchical"
+            elif action_mode == "clustering_spectral":
+                algo = "spectral"
+            elif action_mode == "clustering_dbscan":
+                algo = "dbscan"
 
             # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
             k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
@@ -267,6 +284,9 @@ def run_analysis(
                 cluster_on_matrix=do_matrix_cluster,
                 k=k_val,
                 clustering_algorithm=algo,
+                hierarchical_method=hierarchical_method,
+                eps=float(dbscan_eps),
+                min_samples=int(dbscan_min_samples),
             )
 
             # Perform Clustering (Stats-based) if requested
@@ -279,7 +299,13 @@ def run_analysis(
                 )
 
             # Generate Result Image based on Mode
-            if action_mode in ["clustering", "clustering2", "clustering_hierarchical"]:
+            if action_mode in [
+                "clustering",
+                "clustering2",
+                "clustering_hierarchical",
+                "clustering_spectral",
+                "clustering_dbscan",
+            ]:
                 result_img = processor.create_cluster_map(
                     image_tensor,
                     stats,
@@ -419,7 +445,9 @@ def create_ui(input_dir=None):
                 mode_input = gr.Radio(
                     choices=[
                         "Clustering (K-means)",
+                        "Clustering (Spectral)",
                         "Clustering (Hierarchical)",
+                        "Clustering (DBSCAN)",
                     ],
                     value="Clustering (K-means)",
                     label="Analysis Mode",
@@ -504,6 +532,26 @@ def create_ui(input_dir=None):
                     visible=True,
                 )
 
+                h_method_input = gr.Dropdown(
+                    choices=["ward", "single", "complete", "average"],
+                    value="ward",
+                    label="Linkage Method (Hierarchical Only)",
+                    visible=False,
+                )
+
+                # DBSCAN Settings
+                dbscan_eps_input = gr.Number(
+                    value=0.0,
+                    label="DBSCAN Eps (0 = Auto)",
+                    visible=False,
+                )
+                dbscan_min_input = gr.Number(
+                    value=1,
+                    label="DBSCAN Min Samples",
+                    precision=0,
+                    visible=False,
+                )
+
                 cluster_metric_input = gr.Dropdown(
                     choices=["mean", "std_dev", "threshold"],
                     value="mean",
@@ -529,6 +577,8 @@ def create_ui(input_dir=None):
                     is_cluster = mode == "Clustering"
                     is_cluster2 = mode == "Clustering (K-means)"
                     is_cluster_h = mode == "Clustering (Hierarchical)"
+                    is_cluster_s = mode == "Clustering (Spectral)"
+                    is_cluster_d = mode == "Clustering (DBSCAN)"
                     is_threshold = is_cluster and (metric == "threshold")
 
                     return (
@@ -536,15 +586,25 @@ def create_ui(input_dir=None):
                         gr.update(visible=(is_top_n or is_all or is_heatmap)),  # sort
                         gr.update(visible=(is_top_n or is_all)),  # desc
                         gr.update(
-                            visible=(is_cluster or is_cluster2)
+                            visible=(is_cluster or is_cluster2 or is_cluster_s)
+                            and not is_cluster_d
                         ),  # k (Hidden for Hierarchical)
                         gr.update(
-                            visible=(is_cluster or is_cluster2 or is_cluster_h)
+                            visible=(
+                                is_cluster
+                                or is_cluster2
+                                or is_cluster_h
+                                or is_cluster_s
+                                or is_cluster_d
+                            )
                         ),  # show_scores
                         gr.update(
                             visible=is_cluster
                         ),  # cluster_metric (only for stats clustering)
+                        gr.update(visible=is_cluster_h),  # linkage method
                         gr.update(visible=is_threshold),  # threshold_n
+                        gr.update(visible=is_cluster_d),  # dbscan eps
+                        gr.update(visible=is_cluster_d),  # dbscan min
                     )
 
                 mode_input.change(
@@ -557,7 +617,10 @@ def create_ui(input_dir=None):
                         k_input,
                         cluster_show_scores,
                         cluster_metric_input,
+                        h_method_input,
                         cluster_threshold_n_input,
+                        dbscan_eps_input,
+                        dbscan_min_input,
                     ],
                 )
 
@@ -571,7 +634,10 @@ def create_ui(input_dir=None):
                         k_input,
                         cluster_show_scores,
                         cluster_metric_input,
+                        h_method_input,
                         cluster_threshold_n_input,
+                        dbscan_eps_input,
+                        dbscan_min_input,
                     ],
                 )
 
@@ -626,6 +692,9 @@ def create_ui(input_dir=None):
             cluster_metric_input,
             cluster_threshold_n_input,
             distance_funcs_input,
+            h_method_input,
+            dbscan_eps_input,
+            dbscan_min_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]

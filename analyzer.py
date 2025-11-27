@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+import numpy as np
 import torch
 
 
@@ -24,13 +25,14 @@ class PatchAnalyzer:
     def __init__(self, metric_strategy):
         self.metric = metric_strategy
 
-    def _hierarchical(self, matrix: torch.Tensor, k: int) -> torch.Tensor:
+    def _hierarchical(
+        self, matrix: torch.Tensor, k: int, method: str = "ward"
+    ) -> torch.Tensor:
         """
         Agglomerative Hierarchical Clustering (Ward linkage).
         matrix: (N, N) distance matrix.
         """
         try:
-            import numpy as np
             from scipy.cluster.hierarchy import fcluster, linkage
             from scipy.spatial.distance import squareform
         except ImportError:
@@ -43,7 +45,7 @@ class PatchAnalyzer:
         np.fill_diagonal(dist_matrix, 0)
 
         condensed = squareform(dist_matrix, checks=False)
-        Z = linkage(condensed, method="ward")
+        Z = linkage(condensed, method=method)
 
         # Automatic k determination if k < 2 (Auto mode)
         if k < 2:
@@ -62,6 +64,46 @@ class PatchAnalyzer:
         labels = fcluster(Z, t=k, criterion="maxclust")
 
         return torch.tensor(labels - 1, dtype=torch.long, device=matrix.device)
+
+    def _spectral(self, matrix: torch.Tensor, k: int) -> torch.Tensor:
+        """
+        Spectral Clustering using Normalized Cuts (Ng, Jordan, Weiss).
+        """
+        N = matrix.shape[0]
+        if N < k:
+            return torch.zeros(N, dtype=torch.long, device=matrix.device)
+
+        # 1. Affinity Matrix from Distance Matrix
+        # Heuristic: sigma = median distance
+        flat_dists = matrix.view(-1)
+        sigma = torch.median(flat_dists)
+        if sigma < 1e-6:
+            sigma = 1.0
+
+        # Gaussian Kernel
+        affinity = torch.exp(-(matrix**2) / (2 * sigma**2))
+        affinity.fill_diagonal_(0)
+
+        # 2. Normalized Laplacian: D^(-1/2) * A * D^(-1/2)
+        degrees = affinity.sum(dim=1)
+        d_inv_sqrt = torch.pow(degrees + 1e-8, -0.5)
+
+        # Symmetric normalized adjacency
+        dad = d_inv_sqrt.unsqueeze(1) * affinity * d_inv_sqrt.unsqueeze(0)
+
+        # 3. Eigen Decomposition
+        # torch.linalg.eigh returns eigenvalues in ascending order
+        eigenvalues, eigenvectors = torch.linalg.eigh(dad)
+
+        # 4. Top k eigenvectors (corresponding to k largest eigenvalues)
+        features = eigenvectors[:, -k:]
+
+        # 5. Normalize rows to unit length
+        norm = torch.norm(features, p=2, dim=1, keepdim=True)
+        features = features / (norm + 1e-8)
+
+        # 6. K-Means on embeddings
+        return self._kmeans(features, k)
 
     def _kmeans(self, data: torch.Tensor, k: int, max_iter: int = 20) -> torch.Tensor:
         """
@@ -115,6 +157,62 @@ class PatchAnalyzer:
 
         return labels
 
+    def _dbscan(
+        self, matrix: torch.Tensor, eps: float, min_samples: int
+    ) -> torch.Tensor:
+        """
+        DBSCAN density-based clustering on distance matrix.
+        """
+        # Heuristic for eps if Auto (<= 0)
+        if eps <= 0:
+            # User suggestion: "stddev of vector length".
+            # Approximated by std dev of the distance matrix values.
+            eps = matrix.std().item()
+            if eps < 1e-6:
+                eps = 0.5
+
+        device = matrix.device
+        N = matrix.shape[0]
+
+        # Convert to CPU Numpy for logic
+        dist_mat = matrix.detach().cpu().numpy()
+
+        # 1. Adjacency: dist <= eps
+        adj = dist_mat <= eps
+
+        # 2. Identify Core Points
+        # count neighbors (includes self because dist(i,i)=0 <= eps)
+        degrees = np.sum(adj, axis=1)
+        core_mask = degrees >= min_samples
+
+        labels = -1 * np.ones(N, dtype=np.int64)
+        cluster_id = 0
+
+        # 3. Cluster Expansion
+        # Iterate over all points, but we only start expansion from unvisited core points
+        for i in range(N):
+            if labels[i] != -1 or not core_mask[i]:
+                continue
+
+            # Start new cluster
+            labels[i] = cluster_id
+            stack = [i]
+
+            while stack:
+                curr = stack.pop()
+                neighbors = np.where(adj[curr])[0]
+
+                for neighbor in neighbors:
+                    if labels[neighbor] == -1:
+                        # Was Noise or Unvisited -> assign to cluster
+                        labels[neighbor] = cluster_id
+                        if core_mask[neighbor]:
+                            stack.append(neighbor)
+
+            cluster_id += 1
+
+        return torch.from_numpy(labels).to(device)
+
     def analyze(
         self,
         patches: torch.Tensor,
@@ -125,6 +223,9 @@ class PatchAnalyzer:
         cluster_on_matrix: bool = False,
         k: int = 2,
         clustering_algorithm: str = "kmeans",
+        hierarchical_method: str = "ward",
+        eps: float = 0.0,
+        min_samples: int = 1,
     ) -> Tuple[List[UnitStats], torch.Tensor]:
         """
         patches: (N, C, H, W)
@@ -139,12 +240,20 @@ class PatchAnalyzer:
 
         # Optional: Cluster on the distance matrix (rows as features)
         matrix_labels = None
-        # Allow k < 2 for hierarchical (auto mode), but require k > 1 for kmeans
-        if cluster_on_matrix and (k > 1 or clustering_algorithm == "hierarchical"):
+        # Allow k < 2 for hierarchical (auto mode), but require k > 1 for kmeans/spectral
+        if cluster_on_matrix:
             if clustering_algorithm == "hierarchical":
-                matrix_labels = self._hierarchical(matrix, k)
+                matrix_labels = self._hierarchical(
+                    matrix, k, method=hierarchical_method
+                )
+            elif clustering_algorithm == "spectral":
+                matrix_labels = self._spectral(matrix, k)
+            elif clustering_algorithm == "dbscan":
+                matrix_labels = self._dbscan(matrix, eps, min_samples)
             else:
-                matrix_labels = self._kmeans(matrix, k)
+                # Default to K-Means if k > 1
+                if k > 1:
+                    matrix_labels = self._kmeans(matrix, k)
 
         # 2. Mask diagonal (self-comparison) to avoid skewing stats
         # We set diagonal to NaN so we can ignore it in stats
