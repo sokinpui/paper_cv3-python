@@ -6,6 +6,7 @@ import sys
 import time
 
 import gradio as gr
+import numpy as np
 import torch
 
 from analyzer import PatchAnalyzer
@@ -240,6 +241,36 @@ def run_analysis(
         yield tuple(current_outputs)
 
 
+def calculate_vector_distance(vec_a, vec_b, metric):
+    if not vec_a or not vec_b:
+        return ""
+    try:
+        def parse(s):
+            s = s.strip().replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+            return np.array([float(x) for x in s.split(',') if x.strip()])
+
+        v1 = parse(vec_a)
+        v2 = parse(vec_b)
+
+        if v1.shape != v2.shape:
+            return f"Shape Mismatch: {v1.shape} vs {v2.shape}"
+
+        if metric == "Euclidean":
+            val = np.linalg.norm(v1 - v2)
+        elif metric == "Manhattan":
+            val = np.sum(np.abs(v1 - v2))
+        elif metric == "Cosine":
+            n1 = np.linalg.norm(v1)
+            n2 = np.linalg.norm(v2)
+            if n1 == 0 or n2 == 0:
+                val = 1.0
+            else:
+                val = 1.0 - (np.dot(v1, v2) / (n1 * n2))
+        return f"{val:.6f}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
 # --- Build the UI ---
 
 
@@ -422,6 +453,17 @@ def create_ui(input_dir=None):
                     m_img = gr.Image(label=f"Result ({name})", type="numpy")
                     m_perf = gr.Markdown(value="Waiting...")
                     metric_outputs.extend([m_header, m_img, m_perf])
+
+                gr.Markdown("### 📐 Vector Calculator")
+                with gr.Group():
+                    with gr.Row():
+                        vc_a = gr.Textbox(label="Vector A", placeholder="1.0, 2.0, ...")
+                        vc_b = gr.Textbox(label="Vector B", placeholder="3.0, 4.0, ...")
+                    with gr.Row():
+                        vc_metric = gr.Dropdown(["Euclidean", "Cosine", "Manhattan"], value="Euclidean", label="Metric")
+                        vc_btn = gr.Button("Calculate Distance")
+                    vc_res = gr.Textbox(label="Result", lines=1)
+                    vc_btn.click(calculate_vector_distance, inputs=[vc_a, vc_b, vc_metric], outputs=vc_res)
 
                 # perf_output = gr.Markdown() # Removed global perf
                 json_output = gr.Code(language="json", label="Statistics")
