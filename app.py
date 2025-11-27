@@ -269,7 +269,7 @@ def create_ui(input_dir=None):
                 metric_names = [m[0] for m in METRICS_CONFIG]
                 distance_funcs_input = gr.CheckboxGroup(
                     choices=metric_names,
-                    value=metric_names,
+                    value=["Gradient & Color (Lines)"],
                     label="Distance Functions",
                 )
 
