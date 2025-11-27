@@ -13,6 +13,7 @@ from metrics import (
     CIELabMetric,
     GradientColorMetric,
     HistogramMetric,
+    HumanEyeColorMetric,
     LabMomentsMetric,
     PixelWiseColorMetric,
     SSIMColorMixedMetric,
@@ -32,6 +33,7 @@ if not hasattr(gr, "Modal"):
 # 0. Configuration
 METRICS_CONFIG = [
     ("SSIM (Structure)", SSIMMetric),
+    ("Oklab", HumanEyeColorMetric),
     ("SSIM-Half (Structure Only)", SSIMHalfMetric),
     ("SSIM & Color (Mixed)", SSIMColorMixedMetric),
     ("Gradient & Color (Lines)", GradientColorMetric),

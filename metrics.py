@@ -426,3 +426,63 @@ class HistogramMetric(CIELabMetric):
         hist_features = hist_features / (H * W)
 
         return hist_features
+
+
+class HumanEyeColorMetric(MetricStrategy):
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Uses Oklab color space (perceptually uniform) + Gaussian Blur.
+        Oklab is currently the state-of-the-art for simple Euclidean perceptual color distance.
+        The blur mimics the human eye's tendency to ignore high-frequency pixel noise
+        and focus on regional color patches.
+        """
+        # 1. Convert to Oklab
+        oklab = self._rgb_to_oklab(patches)  # (N, 3, H, W)
+
+        # 2. Blur slightly (3x3 Gaussian) to simulate human visual area integration
+        # This reduces false positives from single-pixel noise or slight texture shifts.
+        kernel = (
+            torch.tensor([[1, 2, 1], [2, 4, 2], [1, 2, 1]], device=patches.device).float()
+            / 16.0
+        )
+        kernel = kernel.view(1, 1, 3, 3).repeat(3, 1, 1, 1)
+        # groups=3 applies kernel to each channel independently
+        oklab_blurred = F.conv2d(oklab, kernel, padding=1, groups=3)
+
+        # 3. Flatten and Compute Euclidean Distance
+        flat_vec = oklab_blurred.reshape(patches.shape[0], -1)
+        dists = torch.cdist(flat_vec, flat_vec, p=2)
+
+        # Normalize (approx RMSE)
+        H, W = patches.shape[2], patches.shape[3]
+        return dists / (H * W) ** 0.5
+
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        oklab = self._rgb_to_oklab(patches)
+        return oklab.reshape(patches.shape[0], -1)
+
+    def _rgb_to_oklab(self, image: torch.Tensor) -> torch.Tensor:
+        # Assumes image is (N, 3, H, W) in [0, 1] sRGB
+        # 1. Inverse Gamma (sRGB to Linear RGB)
+        mask = image > 0.04045
+        linear_rgb = torch.zeros_like(image)
+        linear_rgb[mask] = ((image[mask] + 0.055) / 1.055) ** 2.4
+        linear_rgb[~mask] = image[~mask] / 12.92
+
+        r, g, b = linear_rgb[:, 0], linear_rgb[:, 1], linear_rgb[:, 2]
+
+        # 2. Linear RGB to LMS
+        l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+        m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+        s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+
+        # 3. Non-linearity (Cube root) + LMS to Oklab
+        l_ = torch.pow(l.clamp(min=1e-8), 1 / 3)
+        m_ = torch.pow(m.clamp(min=1e-8), 1 / 3)
+        s_ = torch.pow(s.clamp(min=1e-8), 1 / 3)
+
+        L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_
+        a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_
+        b = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+
+        return torch.stack([L, a, b], dim=1)
