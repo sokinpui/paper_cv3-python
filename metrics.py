@@ -442,7 +442,9 @@ class HumanEyeColorMetric(MetricStrategy):
         # 2. Blur slightly (3x3 Gaussian) to simulate human visual area integration
         # This reduces false positives from single-pixel noise or slight texture shifts.
         kernel = (
-            torch.tensor([[1, 2, 1], [2, 4, 2], [1, 2, 1]], device=patches.device).float()
+            torch.tensor(
+                [[1, 2, 1], [2, 4, 2], [1, 2, 1]], device=patches.device
+            ).float()
             / 16.0
         )
         kernel = kernel.view(1, 1, 3, 3).repeat(3, 1, 1, 1)

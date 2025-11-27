@@ -144,8 +144,10 @@ def create_click_handler(metric_name):
     Creates a closure for the click handler to avoid partial introspection issues
     in Gradio. Captures metric_name.
     """
+
     def handler(evt: gr.SelectData, state, vec_a, vec_b):
         return on_unit_click(metric_name, evt, state, vec_a, vec_b)
+
     return handler
 
 
@@ -186,7 +188,10 @@ def run_analysis(
     # Fill with None/Empty strings
     # Structure: [Header, Image, Perf] per metric
     # + [JSON] + [State]
-    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + ["", current_state]
+    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + [
+        "",
+        current_state,
+    ]
 
     if image_path is None:
         current_outputs[-2] = "Please upload an image."
@@ -636,7 +641,7 @@ def create_ui(input_dir=None):
             img_comp.select(
                 fn=create_click_handler(name),
                 inputs=[analysis_state, vc_a, vc_b],
-                outputs=[vc_a, vc_b]
+                outputs=[vc_a, vc_b],
             )
 
     return demo
