@@ -1,3 +1,4 @@
+import base64
 from typing import List, Tuple
 
 import cv2
@@ -459,3 +460,48 @@ class ImageProcessor:
                 )
 
         return img_np
+
+    def create_interactive_html(
+        self,
+        image_rgb: np.ndarray,
+        units: list,
+        grid_shape: Tuple[int, int],
+        strides: Tuple[int, int],
+        unit_h: int,
+        unit_w: int,
+    ) -> str:
+        """
+        Wraps the image in an SVG with transparent rectangles for tooltips.
+        """
+        # Encode image to base64 PNG
+        # cv2 expects BGR
+        img_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+        success, buffer = cv2.imencode(".png", img_bgr)
+        if not success:
+            return "<div>Error encoding image</div>"
+        
+        img_b64 = base64.b64encode(buffer).decode("utf-8")
+        
+        H, W = image_rgb.shape[:2]
+        rows, cols = grid_shape
+        stride_h, stride_w = strides
+
+        # SVG Header
+        svg_parts = [
+            f'<svg viewBox="0 0 {W} {H}" style="width: 100%; height: auto;" xmlns="http://www.w3.org/2000/svg">',
+            f'<image href="data:image/png;base64,{img_b64}" width="{W}" height="{H}" />'
+        ]
+
+        for u in units:
+            # Calculate coords
+            y = H - unit_h if u.row == rows - 1 else u.row * stride_h
+            x = W - unit_w if u.col == cols - 1 else u.col * stride_w
+            
+            tooltip = f"Unit #{u.index}\nRow: {u.row}, Col: {u.col}\nMean: {u.mean:.4f}\nMedian: {u.median:.4f}\nStd: {u.std_dev:.4f}\nMin: {u.min_score:.4f}\nMax: {u.max_score:.4f}"
+            if u.cluster_id != -1:
+                tooltip += f"\nCluster: {u.cluster_id}"
+
+            svg_parts.append(f'<rect x="{x}" y="{y}" width="{unit_w}" height="{unit_h}" fill="transparent" stroke="none"><title>{tooltip}</title></rect>')
+
+        svg_parts.append('</svg>')
+        return "".join(svg_parts)

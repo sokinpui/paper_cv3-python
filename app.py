@@ -200,6 +200,16 @@ def run_analysis(
                 result_img = processor.get_annotated_rgb(
                     image_tensor, stats, int(height), int(width), grid_shape, strides
                 )
+            
+            # Convert to Interactive HTML
+            result_html = processor.create_interactive_html(
+                result_img,
+                stats,
+                grid_shape,
+                strides,
+                int(height),
+                int(width),
+            )
 
             t_metric_end = time.time()
             metric_duration = t_metric_end - t_metric_start
@@ -217,7 +227,7 @@ def run_analysis(
 
             # Update specific slots in the output list
             current_outputs[base_idx] = gr.update(visible=True)
-            current_outputs[base_idx + 1] = gr.update(visible=True, value=result_img)
+            current_outputs[base_idx + 1] = gr.update(visible=True, value=result_html)
             current_outputs[base_idx + 2] = gr.update(visible=True, value=perf_text)
 
             # Keep top 1 stat for JSON just to show something valid
@@ -423,7 +433,7 @@ def create_ui(input_dir=None):
                 metric_outputs = []
                 for name, _ in METRICS_CONFIG:
                     m_header = gr.Markdown(f"**{name}**")
-                    m_img = gr.Image(label=f"Result ({name})", type="numpy")
+                    m_img = gr.HTML()
                     m_perf = gr.Markdown(value="Waiting...")
                     metric_outputs.extend([m_header, m_img, m_perf])
 
