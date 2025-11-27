@@ -24,6 +24,45 @@ class PatchAnalyzer:
     def __init__(self, metric_strategy):
         self.metric = metric_strategy
 
+    def _hierarchical(self, matrix: torch.Tensor, k: int) -> torch.Tensor:
+        """
+        Agglomerative Hierarchical Clustering (Ward linkage).
+        matrix: (N, N) distance matrix.
+        """
+        try:
+            import numpy as np
+            from scipy.cluster.hierarchy import fcluster, linkage
+            from scipy.spatial.distance import squareform
+        except ImportError:
+            print("Error: Scipy is required for hierarchical clustering.")
+            return torch.zeros(matrix.shape[0], dtype=torch.long, device=matrix.device)
+
+        dist_matrix = matrix.detach().cpu().numpy()
+        # Ensure symmetry and zero diagonal
+        dist_matrix = (dist_matrix + dist_matrix.T) / 2.0
+        np.fill_diagonal(dist_matrix, 0)
+
+        condensed = squareform(dist_matrix, checks=False)
+        Z = linkage(condensed, method="ward")
+
+        # Automatic k determination if k < 2 (Auto mode)
+        if k < 2:
+            distances = Z[:, 2]
+            num_merges = len(distances)
+            if num_merges > 1:
+                # Heuristic: Largest jump in the last 15 merges (distances)
+                window = min(15, num_merges)
+                last_dists = distances[-window:]
+                acceleration = np.diff(last_dists)
+                # k = window - index_of_max_jump
+                k = window - np.argmax(acceleration)
+            else:
+                k = 2
+
+        labels = fcluster(Z, t=k, criterion="maxclust")
+
+        return torch.tensor(labels - 1, dtype=torch.long, device=matrix.device)
+
     def _kmeans(self, data: torch.Tensor, k: int, max_iter: int = 20) -> torch.Tensor:
         """
         Generic K-Means implementation.
@@ -85,6 +124,7 @@ class PatchAnalyzer:
         ascending: bool = True,
         cluster_on_matrix: bool = False,
         k: int = 2,
+        clustering_algorithm: str = "kmeans",
     ) -> List[UnitStats]:
         """
         patches: (N, C, H, W)
@@ -99,8 +139,12 @@ class PatchAnalyzer:
 
         # Optional: Cluster on the distance matrix (rows as features)
         matrix_labels = None
-        if cluster_on_matrix and k > 1:
-            matrix_labels = self._kmeans(matrix, k)
+        # Allow k < 2 for hierarchical (auto mode), but require k > 1 for kmeans
+        if cluster_on_matrix and (k > 1 or clustering_algorithm == "hierarchical"):
+            if clustering_algorithm == "hierarchical":
+                matrix_labels = self._hierarchical(matrix, k)
+            else:
+                matrix_labels = self._kmeans(matrix, k)
 
         # 2. Mask diagonal (self-comparison) to avoid skewing stats
         # We set diagonal to NaN so we can ignore it in stats

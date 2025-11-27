@@ -209,6 +209,15 @@ class CIELabMetric(MetricStrategy):
         return torch.stack([l_chan, a_chan, b_chan], dim=1)
 
 
+class PixelWiseColorMetric(CIELabMetric):
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Returns flattened Lab image data (L, a, b).
+        """
+        lab = self._rgb_to_lab(patches)
+        return lab.reshape(patches.shape[0], -1)
+
+
 class SSIMColorMixedMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """

@@ -14,6 +14,7 @@ from metrics import (
     GradientColorMetric,
     HistogramMetric,
     LabMomentsMetric,
+    PixelWiseColorMetric,
     SSIMColorMixedMetric,
     SSIMHalfMetric,
     SSIMMetric,
@@ -38,6 +39,7 @@ METRICS_CONFIG = [
     ("Color Histogram", HistogramMetric),
     ("LAB Moments (Color Stats)", LabMomentsMetric),
     ("CIELAB", CIELabMetric),
+    ("Pixel-wise Color (Full Lab)", PixelWiseColorMetric),
 ]
 
 # 1. Initialize CUDA Device
@@ -78,6 +80,7 @@ def run_analysis(
         "Heatmap": "heatmap",
         "Clustering": "clustering",
         "Clustering (Matrix)": "clustering2",
+        "Clustering (Hierarchical)": "clustering_hierarchical",
     }
     action_mode = mode_map.get(action_mode_ui, "top_n")
 
@@ -109,7 +112,13 @@ def run_analysis(
         t_det_start = time.time()
 
         # Determine effective top_n
-        if action_mode in ["all", "heatmap", "clustering", "clustering2"]:
+        if action_mode in [
+            "all",
+            "heatmap",
+            "clustering",
+            "clustering2",
+            "clustering_hierarchical",
+        ]:
             # Use a number larger than any possible grid count
             actual_top_n = 999999
         else:
@@ -132,7 +141,16 @@ def run_analysis(
             analyzer = PatchAnalyzer(metric)
 
             # If clustering2, we do clustering inside analyze on the matrix
-            do_matrix_cluster = action_mode == "clustering2"
+            do_matrix_cluster = action_mode in [
+                "clustering2",
+                "clustering_hierarchical",
+            ]
+            algo = (
+                "hierarchical" if action_mode == "clustering_hierarchical" else "kmeans"
+            )
+
+            # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
+            k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
 
             stats = analyzer.analyze(
                 patches,
@@ -141,7 +159,8 @@ def run_analysis(
                 sort_by=sort_by,
                 ascending=not descending,
                 cluster_on_matrix=do_matrix_cluster,
-                k=int(k_clusters),
+                k=k_val,
+                clustering_algorithm=algo,
             )
 
             # Perform Clustering (Stats-based) if requested
@@ -154,7 +173,7 @@ def run_analysis(
                 )
 
             # Generate Result Image based on Mode
-            if action_mode in ["clustering", "clustering2"]:
+            if action_mode in ["clustering", "clustering2", "clustering_hierarchical"]:
                 result_img = processor.create_cluster_map(
                     image_tensor,
                     stats,
@@ -239,6 +258,7 @@ def create_ui(input_dir=None):
                         "Heatmap",
                         "Clustering",
                         "Clustering (Matrix)",
+                        "Clustering (Hierarchical)",
                     ],
                     value="Clustering",
                     label="Analysis Mode",
@@ -337,7 +357,7 @@ def create_ui(input_dir=None):
                 )
 
                 cluster_show_scores = gr.Checkbox(
-                    value=True, label="Show Scores on Map", visible=True
+                    value=False, label="Show Scores on Map", visible=True
                 )
 
                 # Visibility Logic
@@ -347,14 +367,19 @@ def create_ui(input_dir=None):
                     is_heatmap = mode == "Heatmap"
                     is_cluster = mode == "Clustering"
                     is_cluster2 = mode == "Clustering (Matrix)"
+                    is_cluster_h = mode == "Clustering (Hierarchical)"
                     is_threshold = is_cluster and (metric == "threshold")
 
                     return (
                         gr.update(visible=is_top_n),  # top_n
                         gr.update(visible=(is_top_n or is_all or is_heatmap)),  # sort
                         gr.update(visible=(is_top_n or is_all)),  # desc
-                        gr.update(visible=(is_cluster or is_cluster2)),  # k
-                        gr.update(visible=(is_cluster or is_cluster2)),  # show_scores
+                        gr.update(
+                            visible=(is_cluster or is_cluster2)
+                        ),  # k (Hidden for Hierarchical)
+                        gr.update(
+                            visible=(is_cluster or is_cluster2 or is_cluster_h)
+                        ),  # show_scores
                         gr.update(
                             visible=is_cluster
                         ),  # cluster_metric (only for stats clustering)

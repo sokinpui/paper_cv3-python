@@ -10,6 +10,7 @@ from metrics import (
     GradientColorMetric,
     HistogramMetric,
     LabMomentsMetric,
+    PixelWiseColorMetric,
     SSIMColorMixedMetric,
     SSIMHalfMetric,
     SSIMMetric,
@@ -42,6 +43,7 @@ def main():
             "texture",
             "grad_color",
             "hist",
+            "pixel_color",
         ],
         default="ssim",
         help="Comparison metric",
@@ -135,6 +137,8 @@ def main():
         metric = GradientColorMetric()
     elif args.metric == "hist":
         metric = HistogramMetric()
+    elif args.metric == "pixel_color":
+        metric = PixelWiseColorMetric()
     else:
         metric = CIELabMetric()
 
