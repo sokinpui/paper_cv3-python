@@ -357,9 +357,7 @@ class ImageProcessor:
             for c in range(cols):
                 y = r * stride_h if r < rows - 1 else H - unit_h
                 x = c * stride_w if c < cols - 1 else W - unit_w
-                cv2.rectangle(
-                    img_np, (x, y), (x + unit_w, y + unit_h), border_color, 1
-                )
+                cv2.rectangle(img_np, (x, y), (x + unit_w, y + unit_h), border_color, 1)
 
         return img_np
 
@@ -419,9 +417,7 @@ class ImageProcessor:
             for c in range(cols):
                 y = r * stride_h if r < rows - 1 else H - unit_h
                 x = c * stride_w if c < cols - 1 else W - unit_w
-                cv2.rectangle(
-                    img_np, (x, y), (x + unit_w, y + unit_h), border_color, 1
-                )
+                cv2.rectangle(img_np, (x, y), (x + unit_w, y + unit_h), border_color, 1)
 
         # Draw scores on top of the blended image if requested
         if show_scores:

@@ -50,6 +50,7 @@ except Exception as e:
     print(f"Warning: {e}")
     device = torch.device("cpu")
 
+
 def run_analysis(
     image_path,
     height,
@@ -131,7 +132,7 @@ def run_analysis(
             analyzer = PatchAnalyzer(metric)
 
             # If clustering2, we do clustering inside analyze on the matrix
-            do_matrix_cluster = (action_mode == "clustering2")
+            do_matrix_cluster = action_mode == "clustering2"
 
             stats = analyzer.analyze(
                 patches,
@@ -232,7 +233,13 @@ def create_ui(input_dir=None):
             with gr.Column(scale=1):
                 # Action Buttons
                 mode_input = gr.Radio(
-                    choices=["Top N", "All Units", "Heatmap", "Clustering", "Clustering (Matrix)"],
+                    choices=[
+                        "Top N",
+                        "All Units",
+                        "Heatmap",
+                        "Clustering",
+                        "Clustering (Matrix)",
+                    ],
                     value="Clustering",
                     label="Analysis Mode",
                 )
@@ -348,7 +355,9 @@ def create_ui(input_dir=None):
                         gr.update(visible=(is_top_n or is_all)),  # desc
                         gr.update(visible=(is_cluster or is_cluster2)),  # k
                         gr.update(visible=(is_cluster or is_cluster2)),  # show_scores
-                        gr.update(visible=is_cluster),  # cluster_metric (only for stats clustering)
+                        gr.update(
+                            visible=is_cluster
+                        ),  # cluster_metric (only for stats clustering)
                         gr.update(visible=is_threshold),  # threshold_n
                     )
 

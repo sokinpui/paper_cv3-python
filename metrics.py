@@ -46,7 +46,7 @@ class SSIMMetric(MetricStrategy):
 
             # 1. Means (N, 1)
             mu = xc.mean(dim=1, keepdim=True)
-            mu_sq = mu ** 2
+            mu_sq = mu**2
 
             # 2. Covariance (N, N)
             # Centered data

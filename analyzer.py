@@ -167,7 +167,11 @@ class PatchAnalyzer:
         return results[:top_n]
 
     def cluster_stats(
-        self, stats: List[UnitStats], k: int, metric: str = "mean", threshold_n: float = 1.0
+        self,
+        stats: List[UnitStats],
+        k: int,
+        metric: str = "mean",
+        threshold_n: float = 1.0,
     ) -> List[UnitStats]:
         """
         Performs 1D K-Means clustering on the specified score of the units.
@@ -192,5 +196,5 @@ class PatchAnalyzer:
         # Assign back to stats
         for i, s in enumerate(stats):
             s.cluster_id = labels[i].item()
-            
+
         return stats

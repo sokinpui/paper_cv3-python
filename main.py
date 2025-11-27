@@ -33,7 +33,16 @@ def main():
         "--metric",
         "-m",
         type=str,
-        choices=["ssim", "ssim_half", "ssim_color", "cielab", "moments", "texture", "grad_color", "hist"],
+        choices=[
+            "ssim",
+            "ssim_half",
+            "ssim_color",
+            "cielab",
+            "moments",
+            "texture",
+            "grad_color",
+            "hist",
+        ],
         default="ssim",
         help="Comparison metric",
     )
@@ -175,7 +184,13 @@ def main():
         # 5. Visualization
         if args.output:
             processor.save_annotated_image(
-                image_tensor, top_units, args.height, args.width, grid_shape, strides, args.output
+                image_tensor,
+                top_units,
+                args.height,
+                args.width,
+                grid_shape,
+                strides,
+                args.output,
             )
 
     except Exception as e:
