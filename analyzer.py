@@ -248,8 +248,7 @@ class PatchAnalyzer:
         # 1. Find background cluster (most frequent, non-noise)
         cluster_counts = {}
         for s in stats:
-            if s.cluster_id >= 0:
-                cluster_counts[s.cluster_id] = cluster_counts.get(s.cluster_id, 0) + 1
+            cluster_counts[s.cluster_id] = cluster_counts.get(s.cluster_id, 0) + 1
 
         if not cluster_counts:
             return stats  # No non-noise clusters to merge
