@@ -189,6 +189,7 @@ def run_analysis(
         "Clustering (Hierarchical)": "clustering_hierarchical",
         "Clustering (Spectral)": "clustering_spectral",
         "Clustering (DBSCAN)": "clustering_dbscan",
+        "Clustering (DBSCAN2)": "clustering_dbscan2",
     }
     action_mode = mode_map.get(action_mode_ui, "top_n")
 
@@ -235,6 +236,7 @@ def run_analysis(
             "clustering_hierarchical",
             "clustering_spectral",
             "clustering_dbscan",
+            "clustering_dbscan2",
         ]:
             # Use a number larger than any possible grid count
             actual_top_n = 999999
@@ -263,6 +265,7 @@ def run_analysis(
                 "clustering_hierarchical",
                 "clustering_spectral",
                 "clustering_dbscan",
+                "clustering_dbscan2",
             ]
             algo = "kmeans"
             if action_mode == "clustering_hierarchical":
@@ -271,6 +274,8 @@ def run_analysis(
                 algo = "spectral"
             elif action_mode == "clustering_dbscan":
                 algo = "dbscan"
+            elif action_mode == "clustering_dbscan2":
+                algo = "dbscan_spatial_merge"
 
             # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
             k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
@@ -305,6 +310,7 @@ def run_analysis(
                 "clustering_hierarchical",
                 "clustering_spectral",
                 "clustering_dbscan",
+                "clustering_dbscan2",
             ]:
                 result_img = processor.create_cluster_map(
                     image_tensor,
@@ -524,8 +530,9 @@ def create_ui(input_dir=None):
                         "Clustering (Spectral)",
                         "Clustering (Hierarchical)",
                         "Clustering (DBSCAN)",
+                        "Clustering (DBSCAN2)",
                     ],
-                    value="Clustering (DBSCAN)",
+                    value="Clustering (DBSCAN2)",
                     label="Analysis Mode",
                 )
                 with gr.Row():
@@ -679,6 +686,7 @@ def create_ui(input_dir=None):
                     is_cluster_h = mode == "Clustering (Hierarchical)"
                     is_cluster_s = mode == "Clustering (Spectral)"
                     is_cluster_d = mode == "Clustering (DBSCAN)"
+                    is_cluster_d2 = mode == "Clustering (DBSCAN2)"
                     is_threshold = is_cluster and (metric == "threshold")
 
                     return (
@@ -687,7 +695,7 @@ def create_ui(input_dir=None):
                         gr.update(visible=(is_top_n or is_all)),  # desc
                         gr.update(
                             visible=(is_cluster or is_cluster2 or is_cluster_s)
-                            and not is_cluster_d
+                            and not is_cluster_d and not is_cluster_d2
                         ),  # k (Hidden for Hierarchical)
                         gr.update(
                             visible=(
@@ -696,6 +704,7 @@ def create_ui(input_dir=None):
                                 or is_cluster_h
                                 or is_cluster_s
                                 or is_cluster_d
+                                or is_cluster_d2
                             )
                         ),  # show_scores
                         gr.update(
@@ -703,8 +712,8 @@ def create_ui(input_dir=None):
                         ),  # cluster_metric (only for stats clustering)
                         gr.update(visible=is_cluster_h),  # linkage method
                         gr.update(visible=is_threshold),  # threshold_n
-                        gr.update(visible=is_cluster_d),  # dbscan eps
-                        gr.update(visible=is_cluster_d),  # dbscan min
+                        gr.update(visible=is_cluster_d or is_cluster_d2),  # dbscan eps
+                        gr.update(visible=is_cluster_d or is_cluster_d2),  # dbscan min
                     )
 
                 mode_input.change(
