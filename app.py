@@ -579,6 +579,7 @@ def create_ui(input_dir=None):
                             examples=server_images,
                             inputs=img_input,
                             label=f"Select from Server Directory: {input_dir}",
+                            examples_per_page=20,
                         )
 
                 unit_size_presets = {
