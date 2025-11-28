@@ -182,9 +182,8 @@ class HumanEyeColorMetric(MetricStrategy):
         flat_vec = oklab_blurred.reshape(patches.shape[0], -1)
         dists = torch.cdist(flat_vec, flat_vec, p=2)
 
-        # Normalize (approx RMSE)
         H, W = patches.shape[2], patches.shape[3]
-        return (self.multiplier * dists) ** self.exponent / (H * W) ** 0.5
+        return (self.multiplier * dists) ** self.exponent
 
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:
         oklab = self._rgb_to_oklab(patches)

@@ -442,7 +442,14 @@ def calculate_vector_distance(vec_a, vec_b):
 
 
 def run_and_plot_distribution(
-    image_path, height, width, overlap, metric_name, power_transform_degree
+    image_path,
+    height,
+    width,
+    overlap,
+    metric_name,
+    power_transform_degree,
+    oklab_multiplier,
+    oklab_exponent,
 ):
     """
     Performs a dedicated analysis and generates a bar chart of the results.
@@ -462,7 +469,12 @@ def run_and_plot_distribution(
         # Setup Components
         processor = ImageProcessor(device)
         MetricClass = dict(METRICS_CONFIG)[metric_name]
-        metric = MetricClass()
+        if metric_name == "Oklab":
+            metric = MetricClass(
+                multiplier=float(oklab_multiplier), exponent=float(oklab_exponent)
+            )
+        else:
+            metric = MetricClass()
         analyzer = PatchAnalyzer(metric)
 
         # Run a silent analysis
@@ -926,6 +938,8 @@ def create_ui(input_dir=None):
                             overlap_input,
                             plot_metric_select,
                             power_transform_input,
+                            oklab_multiplier_input,
+                            oklab_exponent_input,
                         ],
                         outputs=[score_dist_plot],
                     )
