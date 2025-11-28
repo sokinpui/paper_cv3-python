@@ -533,9 +533,9 @@ def create_ui(input_dir=None):
                 # Action Buttons
                 mode_input = gr.Radio(
                     choices=[
-                        "Clustering (K-means)",
-                        "Clustering (Spectral)",
-                        "Clustering (Hierarchical)",
+                        # "Clustering (K-means)",
+                        # "Clustering (Spectral)",
+                        # "Clustering (Hierarchical)",
                         "Clustering (DBSCAN)",
                         "Clustering (DBSCAN2)",
                     ],
