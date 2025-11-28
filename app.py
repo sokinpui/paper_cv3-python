@@ -569,9 +569,23 @@ def create_ui(input_dir=None):
                             label=f"Select from Server Directory: {input_dir}",
                         )
 
+                unit_size_presets = {
+                    "30x30 (Tiny)": (30, 30),
+                    "50x50 (Small)": (50, 50),
+                    "100x100 (Medium)": (100, 100),
+                    "150x150 (Large)": (150, 150),
+                    "200x200 (X-Large)": (200, 200),
+                    "250x250 (Huge)": (250, 250),
+                }
+                unit_preset_input = gr.Radio(
+                    choices=list(unit_size_presets.keys()),
+                    value="50x50 (Small)",
+                    label="Unit Size Presets",
+                )
+
                 with gr.Row():
-                    h_input = gr.Number(value=200, label="Unit Height", precision=0)
-                    w_input = gr.Number(value=200, label="Unit Width", precision=0)
+                    h_input = gr.Number(value=50, label="Unit Height", precision=0)
+                    w_input = gr.Number(value=50, label="Unit Width", precision=0)
 
                 with gr.Row():
                     overlap_input = gr.Slider(
@@ -581,6 +595,16 @@ def create_ui(input_dir=None):
                         step=0.05,
                         label="Overlap Ratio",
                     )
+
+                def update_unit_size(preset_key):
+                    h, w = unit_size_presets[preset_key]
+                    return h, w
+
+                unit_preset_input.change(
+                    fn=update_unit_size,
+                    inputs=unit_preset_input,
+                    outputs=[h_input, w_input],
+                )
 
                 # Dynamic Settings
                 top_n_input = gr.Number(
@@ -725,9 +749,9 @@ def create_ui(input_dir=None):
                 metric_images = []  # Keep track of image components to bind events
 
                 for name, _ in METRICS_CONFIG:
-                    m_header = gr.Markdown(f"**{name}**")
-                    m_img = gr.Image(label=f"Result ({name})", type="numpy")
-                    m_perf = gr.Markdown(value="Waiting...")
+                    m_header = gr.Markdown(f"**{name}**", visible=False)
+                    m_img = gr.Image(label=f"Result ({name})", type="numpy", visible=False)
+                    m_perf = gr.Markdown(value="Waiting...", visible=False)
                     metric_outputs.extend([m_header, m_img, m_perf])
                     metric_images.append((name, m_img))
 
