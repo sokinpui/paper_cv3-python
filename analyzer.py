@@ -165,11 +165,34 @@ class PatchAnalyzer:
         """
         # Heuristic for eps if Auto (<= 0)
         if eps <= 0:
-            # User suggestion: "stddev of vector length".
-            # Approximated by std dev of the distance matrix values.
-            eps = matrix.std().item()
-            if eps < 1e-6:
-                eps = 0.5
+            # 1. Get the distance to the nearest neighbor for every point.
+            # We use kth=2 because the closest point (kth=1) is the point itself (dist=0).
+            # topk returns largest, so we negate matrix or use sort. Sort is safer for small N.
+            sorted_dists, _ = torch.sort(matrix, dim=1)
+
+            # sorted_dists[:, 0] is 0.0 (self).
+            # sorted_dists[:, 1] is the distance to the 1st nearest neighbor.
+            knn_dists = sorted_dists[:, 1]
+
+            # 2. Calculate the 'Normal' noise level based on these neighbors.
+            # We use median to ignore the fact that anomalies have large nearest-neighbor distances.
+            # We add a small epsilon (1e-6) to prevent 0.0 if the image is perfectly synthetic.
+            median_nn = torch.median(knn_dists).item()
+
+            if median_nn < 1e-6:
+                # If the background is mathematically perfect (0.0 variation),
+                # we fall back to the mean of the knn_dists to capture slight noise.
+                base_eps = knn_dists.mean().item()
+            else:
+                base_eps = median_nn
+
+            # 3. Apply a multiplier (Sensitivity).
+            # 2.5 is a standard rule of thumb: Allow 2.5x the median neighbor distance.
+            eps = base_eps * 2
+
+            # 4. Hard safety floor for purely synthetic images where calculated eps might be 0.0
+            if eps < 1e-4:
+                eps = 0.05
 
         device = matrix.device
         N = matrix.shape[0]
