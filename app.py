@@ -172,6 +172,7 @@ def run_analysis(
     hierarchical_method,
     dbscan_eps,
     dbscan_min_samples,
+    dbscan_eps_sensitivity,
     power_transform_degree,
     current_state,
 ):
@@ -294,6 +295,7 @@ def run_analysis(
                 eps=float(dbscan_eps),
                 min_samples=int(dbscan_min_samples),
                 power_transform_degree=float(power_transform_degree),
+                dbscan_eps_sensitivity=float(dbscan_eps_sensitivity),
             )
 
             # Perform Clustering (Stats-based) if requested
@@ -667,6 +669,15 @@ def create_ui(input_dir=None):
                     label="DBSCAN Eps (0 = Auto)",
                     visible=False,
                 )
+                dbscan_eps_sensitivity_input = gr.Slider(
+                    minimum=1.0,
+                    maximum=10.0,
+                    value=2.0,
+                    step=0.1,
+                    label="DBSCAN Eps Auto-Sensitivity",
+                    info="Multiplier for auto-calculated Eps. Higher is more lenient.",
+                    visible=False,
+                )
                 dbscan_min_input = gr.Number(
                     value=1,
                     label="DBSCAN Min Samples",
@@ -692,7 +703,7 @@ def create_ui(input_dir=None):
                 )
 
                 # Visibility Logic
-                def update_visibility(mode, metric):
+                def update_visibility(mode, metric, dbscan_eps):
                     is_top_n = mode == "Top N"
                     is_all = mode == "All Units"
                     is_heatmap = mode == "Heatmap"
@@ -703,6 +714,10 @@ def create_ui(input_dir=None):
                     is_cluster_d = mode == "Clustering (DBSCAN)"
                     is_cluster_d2 = mode == "Clustering (DBSCAN2)"
                     is_threshold = is_cluster and (metric == "threshold")
+                    is_dbscan_mode = is_cluster_d or is_cluster_d2
+                    # The value from a gr.Number can be None if empty, so handle it.
+                    dbscan_eps_val = 0.0 if dbscan_eps is None else float(dbscan_eps)
+                    is_dbscan_auto_eps = is_dbscan_mode and (dbscan_eps_val == 0.0)
 
                     return (
                         gr.update(visible=is_top_n),  # top_n
@@ -728,13 +743,14 @@ def create_ui(input_dir=None):
                         ),  # cluster_metric (only for stats clustering)
                         gr.update(visible=is_cluster_h),  # linkage method
                         gr.update(visible=is_threshold),  # threshold_n
-                        gr.update(visible=is_cluster_d or is_cluster_d2),  # dbscan eps
-                        gr.update(visible=is_cluster_d or is_cluster_d2),  # dbscan min
+                        gr.update(visible=is_dbscan_mode),  # dbscan eps
+                        gr.update(visible=is_dbscan_auto_eps),  # dbscan eps sensitivity
+                        gr.update(visible=is_dbscan_mode),  # dbscan min
                     )
 
                 mode_input.change(
                     fn=update_visibility,
-                    inputs=[mode_input, cluster_metric_input],
+                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
                     outputs=[
                         top_n_input,
                         sort_input,
@@ -745,13 +761,14 @@ def create_ui(input_dir=None):
                         h_method_input,
                         cluster_threshold_n_input,
                         dbscan_eps_input,
+                        dbscan_eps_sensitivity_input,
                         dbscan_min_input,
                     ],
                 )
 
                 cluster_metric_input.change(
                     fn=update_visibility,
-                    inputs=[mode_input, cluster_metric_input],
+                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
                     outputs=[
                         top_n_input,
                         sort_input,
@@ -762,6 +779,25 @@ def create_ui(input_dir=None):
                         h_method_input,
                         cluster_threshold_n_input,
                         dbscan_eps_input,
+                        dbscan_eps_sensitivity_input,
+                        dbscan_min_input,
+                    ],
+                )
+
+                dbscan_eps_input.change(
+                    fn=update_visibility,
+                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
+                    outputs=[
+                        top_n_input,
+                        sort_input,
+                        desc_input,
+                        k_input,
+                        cluster_show_scores,
+                        cluster_metric_input,
+                        h_method_input,
+                        cluster_threshold_n_input,
+                        dbscan_eps_input,
+                        dbscan_eps_sensitivity_input,
                         dbscan_min_input,
                     ],
                 )
@@ -851,6 +887,7 @@ def create_ui(input_dir=None):
             h_method_input,
             dbscan_eps_input,
             dbscan_min_input,
+            dbscan_eps_sensitivity_input,
             power_transform_input,
             analysis_state,
         ]

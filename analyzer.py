@@ -158,7 +158,11 @@ class PatchAnalyzer:
         return labels
 
     def _dbscan(
-        self, matrix: torch.Tensor, eps: float, min_samples: int
+        self,
+        matrix: torch.Tensor,
+        eps: float,
+        min_samples: int,
+        eps_sensitivity: float,
     ) -> torch.Tensor:
         """
         DBSCAN density-based clustering on distance matrix.
@@ -188,7 +192,7 @@ class PatchAnalyzer:
 
             # 3. Apply a multiplier (Sensitivity).
             # 2.5 is a standard rule of thumb: Allow 2.5x the median neighbor distance.
-            eps = base_eps * 2
+            eps = base_eps * eps_sensitivity
 
             # 4. Hard safety floor for purely synthetic images where calculated eps might be 0.0
             if eps < 1e-4:
@@ -337,6 +341,7 @@ class PatchAnalyzer:
         eps: float = 0.0,
         min_samples: int = 1,
         power_transform_degree: float = 1.0,
+        dbscan_eps_sensitivity: float = 2.0,
     ) -> Tuple[List[UnitStats], torch.Tensor]:
         """
         patches: (N, C, H, W)
@@ -364,7 +369,9 @@ class PatchAnalyzer:
             elif clustering_algorithm == "spectral":
                 matrix_labels = self._spectral(matrix, k)
             elif clustering_algorithm in ["dbscan", "dbscan_spatial_merge"]:
-                matrix_labels = self._dbscan(matrix, eps, min_samples)
+                matrix_labels = self._dbscan(
+                    matrix, eps, min_samples, dbscan_eps_sensitivity
+                )
             else:
                 # Default to K-Means if k > 1
                 if k > 1:
