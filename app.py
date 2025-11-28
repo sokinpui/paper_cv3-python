@@ -172,6 +172,7 @@ def run_analysis(
     hierarchical_method,
     dbscan_eps,
     dbscan_min_samples,
+    power_transform_degree,
     current_state,
 ):
     """
@@ -292,6 +293,7 @@ def run_analysis(
                 hierarchical_method=hierarchical_method,
                 eps=float(dbscan_eps),
                 min_samples=int(dbscan_min_samples),
+                power_transform_degree=float(power_transform_degree),
             )
 
             # Perform Clustering (Stats-based) if requested
@@ -443,7 +445,9 @@ def calculate_vector_distance(vec_a, vec_b):
         return f"Error: {e}"
 
 
-def run_and_plot_distribution(image_path, height, width, overlap, metric_name):
+def run_and_plot_distribution(
+    image_path, height, width, overlap, metric_name, power_transform_degree
+):
     """
     Performs a dedicated analysis and generates a bar chart of the results.
     """
@@ -478,6 +482,7 @@ def run_and_plot_distribution(image_path, height, width, overlap, metric_name):
             top_n=999999,
             sort_by="mean",  # Not critical as we sort later
             ascending=True,
+            power_transform_degree=float(power_transform_degree),
         )
 
         if not stats:
@@ -602,6 +607,15 @@ def create_ui(input_dir=None):
                         step=0.05,
                         label="Overlap Ratio",
                     )
+
+                power_transform_input = gr.Slider(
+                    minimum=0.1,
+                    maximum=5.0,
+                    value=1.0,
+                    step=0.1,
+                    label="Power Transformation",
+                    info="Raise distance to a power (distance^n). >1 exaggerates large distances, <1 flattens them.",
+                )
 
                 def update_unit_size(preset_key):
                     h, w = unit_size_presets[preset_key]
@@ -813,6 +827,7 @@ def create_ui(input_dir=None):
                             w_input,
                             overlap_input,
                             plot_metric_select,
+                            power_transform_input,
                         ],
                         outputs=[score_dist_plot],
                     )
@@ -835,6 +850,7 @@ def create_ui(input_dir=None):
             h_method_input,
             dbscan_eps_input,
             dbscan_min_input,
+            power_transform_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]

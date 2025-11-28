@@ -314,6 +314,7 @@ class PatchAnalyzer:
         hierarchical_method: str = "ward",
         eps: float = 0.0,
         min_samples: int = 1,
+        power_transform_degree: float = 1.0,
     ) -> Tuple[List[UnitStats], torch.Tensor]:
         """
         patches: (N, C, H, W)
@@ -325,6 +326,10 @@ class PatchAnalyzer:
         # 1. Compute Similarity/Distance Matrix (N, N)
         # This is the heavy GPU operation
         matrix = self.metric.compute(patches)
+
+        # Optional: Apply Power Transformation to exaggerate/flatten distances
+        if power_transform_degree != 1.0:
+            matrix = torch.pow(matrix.clamp(min=0.0), power_transform_degree)
 
         # Optional: Cluster on the distance matrix (rows as features)
         matrix_labels = None

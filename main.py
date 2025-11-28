@@ -110,6 +110,12 @@ def main():
         action="store_true",
         help="Convert image to grayscale before processing",
     )
+    parser.add_argument(
+        "--power_transform",
+        type=float,
+        default=1.0,
+        help="Raise distance to a power (distance^n). Default is 1.0 (no change).",
+    )
 
     args = parser.parse_args()
 
@@ -187,6 +193,7 @@ def main():
             top_n=args.top_n,
             sort_by=args.sort_by,
             ascending=ascending,
+            power_transform_degree=args.power_transform,
         )
 
         # 4. Output
