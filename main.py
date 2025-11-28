@@ -113,7 +113,7 @@ def main():
     parser.add_argument(
         "--power_transform",
         type=float,
-        default=1.0,
+        default=0.4,
         help="Raise distance to a power (distance^n). Default is 1.0 (no change).",
     )
 

@@ -339,8 +339,8 @@ class PatchAnalyzer:
         clustering_algorithm: str = "kmeans",
         hierarchical_method: str = "ward",
         eps: float = 0.0,
-        min_samples: int = 1,
-        power_transform_degree: float = 1.0,
+        min_samples: int = 2,
+        power_transform_degree: float = 0.4,
         dbscan_eps_sensitivity: float = 2.0,
     ) -> Tuple[List[UnitStats], torch.Tensor]:
         """

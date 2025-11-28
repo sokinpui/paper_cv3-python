@@ -614,7 +614,7 @@ def create_ui(input_dir=None):
                 power_transform_input = gr.Slider(
                     minimum=0.1,
                     maximum=5.0,
-                    value=1.0,
+                    value=0.4,
                     step=0.1,
                     label="Power Transformation",
                     info="Raise distance to a power (distance^n). >1 exaggerates large distances, <1 flattens them.",
@@ -679,7 +679,7 @@ def create_ui(input_dir=None):
                     visible=False,
                 )
                 dbscan_min_input = gr.Number(
-                    value=1,
+                    value=2,
                     label="DBSCAN Min Samples",
                     precision=0,
                     visible=False,
