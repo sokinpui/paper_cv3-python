@@ -327,77 +327,6 @@ class PatchAnalyzer:
 
         return stats
 
-    def _patch_core(
-        self,
-        matrix: torch.Tensor,
-        bank_size: int = 10,
-        sensitivity: float = 3.0,
-        grid_shape: Tuple[int, int] = (1, 1),
-    ) -> List[UnitStats]:
-        """
-        PatchCore-inspired Anomaly Detection.
-        1. Identify 'Normal' Bank: Units with smallest L2 norm of distance vector (most similar to others).
-        2. Anomaly Score: Distance to the nearest neighbor in the Memory Bank.
-        3. Threshold: Mean + Sensitivity * StdDev of the scores.
-        """
-        N = matrix.shape[0]
-        # Handle NaNs (diagonals) by replacing with 0 for Norm calculation
-        mat_clean = torch.nan_to_num(matrix, nan=0.0)
-
-        # 1. Build Memory Bank
-        # Calculate L2 norm of each row (distance vector length)
-        vec_norms = torch.norm(mat_clean, p=2, dim=1)
-        # Sort ascending: Smallest norm = Most representative/normal
-        _, sorted_indices = torch.sort(vec_norms, descending=False)
-        
-        actual_bank_size = min(bank_size, N)
-        bank_indices = sorted_indices[:actual_bank_size]
-
-        # 2. Compute Anomaly Score for ALL units
-        # Distance to the NEAREST unit in the bank
-        # Extract columns corresponding to the bank
-        dists_to_bank = mat_clean[:, bank_indices] # (N, BankSize)
-        
-        # Min distance per unit
-        scores, _ = torch.min(dists_to_bank, dim=1) # (N,)
-
-        # 3. Determine Threshold (Statistical)
-        score_mean = scores.mean()
-        score_std = scores.std()
-        threshold = score_mean + (sensitivity * score_std)
-
-        # 4. Filter Anomalies
-        results = []
-        rows, cols = grid_shape
-        
-        # We return stats for ALL units, but mark anomalies via a flag or just return anomalies.
-        # To fit the existing pipeline which expects a list of stats to annotate,
-        # we will filter and return ONLY the anomalies.
-        
-        # Convert to CPU for list building
-        scores_np = scores.detach().cpu().numpy()
-        
-        for i in range(N):
-            score = float(scores_np[i])
-            if score > threshold:
-                r, c = divmod(i, cols)
-                # We populate the stats object. 
-                # Note: 'mean' here represents the Anomaly Score for sorting purposes
-                stats = UnitStats(
-                    index=i,
-                    row=r,
-                    col=c,
-                    mean=score,   # Storing Anomaly Score here
-                    median=score,
-                    std_dev=0.0,
-                    min_score=score,
-                    max_score=score,
-                    cluster_id=-1 
-                )
-                results.append(stats)
-
-        return results
-
     def analyze(
         self,
         patches: torch.Tensor,
@@ -413,8 +342,6 @@ class PatchAnalyzer:
         min_samples: int = 2,
         power_transform_degree: float = 0.4,
         dbscan_eps_sensitivity: float = 2.0,
-        patch_core_bank_size: int = 10,
-        patch_core_sensitivity: float = 3.0,
     ) -> Tuple[List[UnitStats], torch.Tensor]:
         """
         patches: (N, C, H, W)
@@ -434,7 +361,7 @@ class PatchAnalyzer:
         # Optional: Cluster on the distance matrix (rows as features)
         matrix_labels = None
         # Allow k < 2 for hierarchical (auto mode), but require k > 1 for kmeans/spectral
-        if cluster_on_matrix and clustering_algorithm != "patchcore":
+        if cluster_on_matrix:
             if clustering_algorithm == "hierarchical":
                 matrix_labels = self._hierarchical(
                     matrix, k, method=hierarchical_method
@@ -449,16 +376,6 @@ class PatchAnalyzer:
                 # Default to K-Means if k > 1
                 if k > 1:
                     matrix_labels = self._kmeans(matrix, k)
-
-        # --- PATCHCORE BRANCH ---
-        if clustering_algorithm == "patchcore":
-            # PatchCore handles its own logic and filtering
-            anomalies = self._patch_core(
-                matrix, patch_core_bank_size, patch_core_sensitivity, grid_shape
-            )
-            # Sort by score (descending = most anomalous)
-            anomalies.sort(key=lambda x: x.mean, reverse=True)
-            return anomalies, matrix
 
         # 2. Mask diagonal (self-comparison) to avoid skewing stats
         # We set diagonal to NaN so we can ignore it in stats
