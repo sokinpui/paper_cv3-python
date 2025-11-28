@@ -14,6 +14,7 @@ from metrics import (
     CIEDE2000Metric,
     CIELabMetric,
     GradientColorMetric,
+    GradientStructureMetric,
     HistogramMetric,
     HumanEyeColorMetric,
     LabMomentsMetric,
@@ -45,6 +46,7 @@ METRICS_CONFIG = [
     ("LAB Moments (Color Stats)", LabMomentsMetric),
     ("CIELAB", CIELabMetric),
     ("Pixel-wise Color (Full Lab)", PixelWiseColorMetric),
+    ("Gradient Only", GradientStructureMetric),
     ("MSE (Mean Squared Error)", MSEMetric),
     ("CIEDE2000 (Precise Color)", CIEDE2000Metric),
 ]

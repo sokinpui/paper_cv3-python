@@ -644,3 +644,49 @@ class CIEDE2000Metric(MetricStrategy):
         )
 
         return delta_E
+
+
+class GradientStructureMetric(CIELabMetric):
+    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Features:
+        1. Texture Strength (Gradient Magnitude on L) - Captures lines/edges.
+        2. Roughness (Luminance Std Dev) - Captures noise/texture variance.
+
+        Explicitly IGNORES mean color (a and b channels) so that
+        different background colors (e.g. Green vs White) are treated as identical
+        if they have the same surface smoothness.
+        """
+        # 1. Convert to Lab
+        lab = self._rgb_to_lab(patches)
+        l_chan = lab[:, 0:1, :, :]
+
+        # 2. Texture Strength (Gradient Magnitude on L)
+        kx = (
+            torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], device=patches.device)
+            .view(1, 1, 3, 3)
+            .float()
+        )
+        ky = (
+            torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], device=patches.device)
+            .view(1, 1, 3, 3)
+            .float()
+        )
+
+        gx = F.conv2d(l_chan, kx, padding=1)
+        gy = F.conv2d(l_chan, ky, padding=1)
+        grad_mag = torch.sqrt(gx**2 + gy**2 + 1e-8)
+
+        feat_texture = grad_mag.mean(dim=(2, 3))  # (N, 1)
+
+        # 3. Roughness (Luminance Std Dev)
+        feat_roughness = l_chan.std(dim=(2, 3))  # (N, 1)
+
+        # Concatenate: (N, 2) - NO Color Channels here
+        features = torch.cat([feat_texture, feat_roughness], dim=1)
+
+        # 4. Z-Score Normalization
+        f_mean = features.mean(dim=0, keepdim=True)
+        f_std = features.std(dim=0, keepdim=True) + 1e-8
+
+        return (features - f_mean) / f_std
