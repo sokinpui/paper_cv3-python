@@ -802,6 +802,25 @@ def create_ui(input_dir=None):
                     ],
                 )
 
+                # Trigger visibility update on load to match default mode
+                demo.load(
+                    fn=update_visibility,
+                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
+                    outputs=[
+                        top_n_input,
+                        sort_input,
+                        desc_input,
+                        k_input,
+                        cluster_show_scores,
+                        cluster_metric_input,
+                        h_method_input,
+                        cluster_threshold_n_input,
+                        dbscan_eps_input,
+                        dbscan_eps_sensitivity_input,
+                        dbscan_min_input,
+                    ],
+                )
+
             with gr.Column(scale=3):
                 gr.Markdown("### 📊 Analysis Results (By Distance Function)")
 
