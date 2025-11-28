@@ -695,7 +695,8 @@ def create_ui(input_dir=None):
                         gr.update(visible=(is_top_n or is_all)),  # desc
                         gr.update(
                             visible=(is_cluster or is_cluster2 or is_cluster_s)
-                            and not is_cluster_d and not is_cluster_d2
+                            and not is_cluster_d
+                            and not is_cluster_d2
                         ),  # k (Hidden for Hierarchical)
                         gr.update(
                             visible=(
@@ -759,7 +760,9 @@ def create_ui(input_dir=None):
 
                 for name, _ in METRICS_CONFIG:
                     m_header = gr.Markdown(f"**{name}**", visible=False)
-                    m_img = gr.Image(label=f"Result ({name})", type="numpy", visible=False)
+                    m_img = gr.Image(
+                        label=f"Result ({name})", type="numpy", visible=False
+                    )
                     m_perf = gr.Markdown(value="Waiting...", visible=False)
                     metric_outputs.extend([m_header, m_img, m_perf])
                     metric_images.append((name, m_img))

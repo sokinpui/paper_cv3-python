@@ -244,7 +244,10 @@ class PatchAnalyzer:
         for r in range(rows):
             for c in range(cols):
                 current_unit = unit_map.get((r, c))
-                if not current_unit or current_unit.cluster_id not in anomalous_clusters:
+                if (
+                    not current_unit
+                    or current_unit.cluster_id not in anomalous_clusters
+                ):
                     continue
 
                 current_cid = current_unit.cluster_id
