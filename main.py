@@ -60,7 +60,7 @@ def main():
         "-s",
         type=str,
         default="mean",
-        choices=["mean", "median", "std_dev", "min_score", "max_score"],
+        choices=["mean", "median", "std_dev", "min_score", "max_score", "l2_norm"],
         help="Stat to rank by",
     )
     parser.add_argument(

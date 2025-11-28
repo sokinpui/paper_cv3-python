@@ -428,7 +428,7 @@ class ImageProcessor:
                 y = u.row * stride_h if u.row < rows - 1 else H - unit_h
                 x = u.col * stride_w if u.col < cols - 1 else W - unit_w
 
-                text = f"{u.mean:.5f}"
+                text = f"{u.l2_norm:.2f}"
                 font_scale = 0.8
                 thickness = 2
                 (tw, th), _ = cv2.getTextSize(

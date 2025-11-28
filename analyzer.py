@@ -16,6 +16,7 @@ class UnitStats:
     min_score: float
     max_score: float
     cluster_id: int = -1
+    l2_norm: float = 0.0
 
     def to_dict(self):
         return self.__dict__
@@ -421,6 +422,8 @@ class PatchAnalyzer:
         results = []
         rows, cols = grid_shape
 
+        l2_norms = torch.sqrt(torch.nansum(matrix**2, dim=1))
+
         for i in range(N):
             r, c = divmod(i, cols)
             stats = UnitStats(
@@ -433,6 +436,7 @@ class PatchAnalyzer:
                 min_score=mins[i].item(),
                 max_score=maxs[i].item(),
                 cluster_id=matrix_labels[i].item() if matrix_labels is not None else -1,
+                l2_norm=l2_norms[i].item(),
             )
             results.append(stats)
 
