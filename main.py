@@ -133,6 +133,18 @@ def main():
         default=3.0,
         help="PatchCore: Sensitivity (Threshold = Mean + Sense * Std).",
     )
+    parser.add_argument(
+        "--oklab_multiplier",
+        type=float,
+        default=10.0,
+        help="Oklab metric: distance multiplier.",
+    )
+    parser.add_argument(
+        "--oklab_exponent",
+        type=float,
+        default=2.5,
+        help="Oklab metric: distance exponent.",
+    )
 
     args = parser.parse_args()
 
@@ -167,7 +179,9 @@ def main():
     elif args.metric == "pixel_color":
         metric = PixelWiseColorMetric()
     elif args.metric == "human_eye":
-        metric = HumanEyeColorMetric()
+        metric = HumanEyeColorMetric(
+            multiplier=args.oklab_multiplier, exponent=args.oklab_exponent
+        )
     elif args.metric == "mse":
         metric = MSEMetric()
     else:

@@ -10,21 +10,7 @@ import numpy as np
 import torch
 
 from analyzer import PatchAnalyzer
-from metrics import (
-    CIEDE2000Metric,
-    CIELabMetric,
-    GradientColorMetric,
-    GradientStructureMetric,
-    HistogramMetric,
-    HumanEyeColorMetric,
-    LabMomentsMetric,
-    MSEMetric,
-    PixelWiseColorMetric,
-    SSIMColorMixedMetric,
-    SSIMHalfMetric,
-    SSIMMetric,
-    TextureColorMetric,
-)
+from metrics import GradientColorMetric, HumanEyeColorMetric
 from processor import ImageProcessor
 
 # Compatibility for older Gradio versions (Pre-5.0)
@@ -36,19 +22,8 @@ if not hasattr(gr, "Modal"):
 
 # 0. Configuration
 METRICS_CONFIG = [
-    ("SSIM (Structure)", SSIMMetric),
     ("Oklab", HumanEyeColorMetric),
-    ("SSIM-Half (Structure Only)", SSIMHalfMetric),
-    ("SSIM & Color (Mixed)", SSIMColorMixedMetric),
     ("Gradient & Color (Lines)", GradientColorMetric),
-    ("Texture & Color (Defects)", TextureColorMetric),
-    ("Color Histogram", HistogramMetric),
-    ("LAB Moments (Color Stats)", LabMomentsMetric),
-    ("CIELAB", CIELabMetric),
-    ("Pixel-wise Color (Full Lab)", PixelWiseColorMetric),
-    ("Gradient Only", GradientStructureMetric),
-    ("MSE (Mean Squared Error)", MSEMetric),
-    ("CIEDE2000 (Precise Color)", CIEDE2000Metric),
 ]
 
 # 1. Initialize CUDA Device
@@ -178,6 +153,8 @@ def run_analysis(
     power_transform_degree,
     patch_core_bank_size,
     patch_core_sensitivity,
+    oklab_multiplier,
+    oklab_exponent,
     current_state,
 ):
     """
@@ -264,7 +241,13 @@ def run_analysis(
             t_metric_start = time.time()
 
             # Instantiate and Analyze
-            metric = MetricClass()
+            if name == "Oklab":
+                metric = MetricClass(
+                    multiplier=float(oklab_multiplier), exponent=float(oklab_exponent)
+                )
+            else:
+                metric = MetricClass()
+
             analyzer = PatchAnalyzer(metric)
 
             # If clustering2, we do clustering inside analyze on the matrix
@@ -565,6 +548,34 @@ def create_ui(input_dir=None):
                     label="Distance Functions",
                 )
 
+                with gr.Group() as oklab_settings:
+                    gr.Markdown("##### Oklab Settings")
+                    oklab_multiplier_input = gr.Slider(
+                        minimum=1.0,
+                        maximum=100.0,
+                        value=1.0,
+                        step=1,
+                        label="Distance Multiplier",
+                        info="Amplifies raw distance before exponent. Higher = more sensitive.",
+                    )
+                    oklab_exponent_input = gr.Slider(
+                        minimum=1,
+                        maximum=20.0,
+                        value=1,
+                        step=0.1,
+                        label="Distance Exponent",
+                        info="Power to raise distance to. >1 exaggerates large distances.",
+                    )
+
+                def update_oklab_visibility(selected_metrics):
+                    return gr.update(visible="Oklab" in selected_metrics)
+
+                distance_funcs_input.change(
+                    fn=update_oklab_visibility,
+                    inputs=distance_funcs_input,
+                    outputs=[oklab_settings],
+                )
+
                 gr.Markdown("### Settings")
 
                 # Input Controls
@@ -803,45 +814,26 @@ def create_ui(input_dir=None):
                     ],
                 )
 
-                cluster_metric_input.change(
-                    fn=update_visibility,
-                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
-                    outputs=[
-                        top_n_input,
-                        sort_input,
-                        desc_input,
-                        k_input,
-                        cluster_show_scores,
-                        cluster_metric_input,
-                        h_method_input,
-                        cluster_threshold_n_input,
-                        dbscan_eps_input,
-                        dbscan_eps_sensitivity_input,
-                        dbscan_min_input,
-                        pc_bank_input,
-                        pc_sense_input,
-                    ],
-                )
-
-                dbscan_eps_input.change(
-                    fn=update_visibility,
-                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
-                    outputs=[
-                        top_n_input,
-                        sort_input,
-                        desc_input,
-                        k_input,
-                        cluster_show_scores,
-                        cluster_metric_input,
-                        h_method_input,
-                        cluster_threshold_n_input,
-                        dbscan_eps_input,
-                        dbscan_eps_sensitivity_input,
-                        dbscan_min_input,
-                        pc_bank_input,
-                        pc_sense_input,
-                    ],
-                )
+                for comp in [cluster_metric_input, dbscan_eps_input]:
+                    comp.change(
+                        fn=update_visibility,
+                        inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
+                        outputs=[
+                            top_n_input,
+                            sort_input,
+                            desc_input,
+                            k_input,
+                            cluster_show_scores,
+                            cluster_metric_input,
+                            h_method_input,
+                            cluster_threshold_n_input,
+                            dbscan_eps_input,
+                            dbscan_eps_sensitivity_input,
+                            dbscan_min_input,
+                            pc_bank_input,
+                            pc_sense_input,
+                        ],
+                    )
 
                 # Trigger visibility update on load to match default mode
                 demo.load(
@@ -862,6 +854,13 @@ def create_ui(input_dir=None):
                         pc_bank_input,
                         pc_sense_input,
                     ],
+                )
+
+                # Trigger oklab visibility on load
+                demo.load(
+                    fn=update_oklab_visibility,
+                    inputs=distance_funcs_input,
+                    outputs=[oklab_settings],
                 )
 
             with gr.Column(scale=3):
@@ -953,6 +952,8 @@ def create_ui(input_dir=None):
             power_transform_input,
             pc_bank_input,
             pc_sense_input,
+            oklab_multiplier_input,
+            oklab_exponent_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]
