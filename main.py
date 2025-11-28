@@ -49,7 +49,7 @@ def main():
             "human_eye",
             "mse",
         ],
-        default="ssim",
+        default="human_eye",
         help="Comparison metric",
     )
     parser.add_argument(
@@ -116,6 +116,23 @@ def main():
         default=0.4,
         help="Raise distance to a power (distance^n). Default is 1.0 (no change).",
     )
+    parser.add_argument(
+        "--patchcore",
+        action="store_true",
+        help="Use PatchCore anomaly detection mode instead of Top-N.",
+    )
+    parser.add_argument(
+        "--pc_bank",
+        type=int,
+        default=10,
+        help="PatchCore: Memory Bank Size (number of normal units).",
+    )
+    parser.add_argument(
+        "--pc_sense",
+        type=float,
+        default=3.0,
+        help="PatchCore: Sensitivity (Threshold = Mean + Sense * Std).",
+    )
 
     args = parser.parse_args()
 
@@ -158,6 +175,7 @@ def main():
 
     # Both metrics now use High Score = Different. Default sort is Descending (False).
     ascending = args.ascending
+    algo = "patchcore" if args.patchcore else "kmeans"
 
     analyzer = PatchAnalyzer(metric)
 
@@ -187,17 +205,26 @@ def main():
         print(f"Extracted {patches.shape[0]} units. Grid: {grid_shape}")
         print("Computing pairwise matrix and statistics...")
 
+        # If PatchCore is active, top_n is ignored by logic but we pass it anyway
         top_units, _ = analyzer.analyze(
             patches,
             grid_shape,
             top_n=args.top_n,
             sort_by=args.sort_by,
             ascending=ascending,
+            cluster_on_matrix=(args.patchcore),
+            clustering_algorithm=algo,
             power_transform_degree=args.power_transform,
+            patch_core_bank_size=args.pc_bank,
+            patch_core_sensitivity=args.pc_sense,
         )
 
         # 4. Output
-        print(f"\nTop {args.top_n} Significant Units (Ranked by {args.sort_by}):")
+        if args.patchcore:
+            print(f"\nPatchCore Found {len(top_units)} Anomalies (Bank={args.pc_bank}, Sense={args.pc_sense}):")
+        else:
+            print(f"\nTop {args.top_n} Significant Units (Ranked by {args.sort_by}):")
+            
         print(json.dumps([u.to_dict() for u in top_units], indent=4))
 
         # 5. Visualization

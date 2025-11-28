@@ -176,6 +176,8 @@ def run_analysis(
     dbscan_min_samples,
     dbscan_eps_sensitivity,
     power_transform_degree,
+    patch_core_bank_size,
+    patch_core_sensitivity,
     current_state,
 ):
     """
@@ -194,6 +196,7 @@ def run_analysis(
         "Clustering (Spectral)": "clustering_spectral",
         "Clustering (DBSCAN)": "clustering_dbscan",
         "Clustering (DBSCAN2)": "clustering_dbscan2",
+        "PatchCore": "patchcore",
     }
     action_mode = mode_map.get(action_mode_ui, "top_n")
 
@@ -241,6 +244,7 @@ def run_analysis(
             "clustering_spectral",
             "clustering_dbscan",
             "clustering_dbscan2",
+            "patchcore",
         ]:
             # Use a number larger than any possible grid count
             actual_top_n = 999999
@@ -270,6 +274,7 @@ def run_analysis(
                 "clustering_spectral",
                 "clustering_dbscan",
                 "clustering_dbscan2",
+                "patchcore",
             ]
             algo = "kmeans"
             if action_mode == "clustering_hierarchical":
@@ -280,6 +285,8 @@ def run_analysis(
                 algo = "dbscan"
             elif action_mode == "clustering_dbscan2":
                 algo = "dbscan_spatial_merge"
+            elif action_mode == "patchcore":
+                algo = "patchcore"
 
             # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
             k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
@@ -298,6 +305,8 @@ def run_analysis(
                 min_samples=int(dbscan_min_samples),
                 power_transform_degree=float(power_transform_degree),
                 dbscan_eps_sensitivity=float(dbscan_eps_sensitivity),
+                patch_core_bank_size=int(patch_core_bank_size),
+                patch_core_sensitivity=float(patch_core_sensitivity),
             )
 
             # Perform Clustering (Stats-based) if requested
@@ -338,7 +347,7 @@ def run_analysis(
                     stat_name=sort_by,
                 )
             else:
-                # top_n or all: Show annotated boxes
+                # top_n, all, or patchcore: Show annotated boxes
                 result_img = processor.get_annotated_rgb(
                     image_tensor, stats, int(height), int(width), grid_shape, strides
                 )
@@ -540,6 +549,7 @@ def create_ui(input_dir=None):
                         # "Clustering (Hierarchical)",
                         "Clustering (DBSCAN)",
                         "Clustering (DBSCAN2)",
+                        "PatchCore",
                     ],
                     value="Clustering (DBSCAN2)",
                     label="Analysis Mode",
@@ -551,7 +561,7 @@ def create_ui(input_dir=None):
                 metric_names = [m[0] for m in METRICS_CONFIG]
                 distance_funcs_input = gr.CheckboxGroup(
                     choices=metric_names,
-                    value=["Gradient & Color (Lines)"],
+                    value=["Oklab"],
                     label="Distance Functions",
                 )
 
@@ -704,6 +714,26 @@ def create_ui(input_dir=None):
                     value=False, label="Show Scores on Map", visible=True
                 )
 
+                # PatchCore Settings
+                pc_bank_input = gr.Slider(
+                    minimum=1,
+                    maximum=100,
+                    value=10,
+                    step=1,
+                    label="PatchCore Bank Size",
+                    info="Number of 'most normal' units to keep in memory.",
+                    visible=False,
+                )
+                pc_sense_input = gr.Slider(
+                    minimum=0.0,
+                    maximum=10.0,
+                    value=3.0,
+                    step=0.1,
+                    label="PatchCore Sensitivity",
+                    info="Threshold = Mean + X * Std. Lower X = More Anomalies.",
+                    visible=False,
+                )
+
                 # Visibility Logic
                 def update_visibility(mode, metric, dbscan_eps):
                     is_top_n = mode == "Top N"
@@ -715,11 +745,21 @@ def create_ui(input_dir=None):
                     is_cluster_s = mode == "Clustering (Spectral)"
                     is_cluster_d = mode == "Clustering (DBSCAN)"
                     is_cluster_d2 = mode == "Clustering (DBSCAN2)"
+                    is_patchcore = mode == "PatchCore"
+
                     is_threshold = is_cluster and (metric == "threshold")
                     is_dbscan_mode = is_cluster_d or is_cluster_d2
                     # The value from a gr.Number can be None if empty, so handle it.
                     dbscan_eps_val = 0.0 if dbscan_eps is None else float(dbscan_eps)
                     is_dbscan_auto_eps = is_dbscan_mode and (dbscan_eps_val == 0.0)
+                    is_clustering_any = (
+                        is_cluster
+                        or is_cluster2
+                        or is_cluster_h
+                        or is_cluster_s
+                        or is_cluster_d
+                        or is_cluster_d2
+                    )
 
                     return (
                         gr.update(visible=is_top_n),  # top_n
@@ -730,16 +770,7 @@ def create_ui(input_dir=None):
                             and not is_cluster_d
                             and not is_cluster_d2
                         ),  # k (Hidden for Hierarchical)
-                        gr.update(
-                            visible=(
-                                is_cluster
-                                or is_cluster2
-                                or is_cluster_h
-                                or is_cluster_s
-                                or is_cluster_d
-                                or is_cluster_d2
-                            )
-                        ),  # show_scores
+                        gr.update(visible=is_clustering_any),  # show_scores
                         gr.update(
                             visible=is_cluster
                         ),  # cluster_metric (only for stats clustering)
@@ -748,6 +779,8 @@ def create_ui(input_dir=None):
                         gr.update(visible=is_dbscan_mode),  # dbscan eps
                         gr.update(visible=is_dbscan_auto_eps),  # dbscan eps sensitivity
                         gr.update(visible=is_dbscan_mode),  # dbscan min
+                        gr.update(visible=is_patchcore),  # pc bank
+                        gr.update(visible=is_patchcore),  # pc sensitivity
                     )
 
                 mode_input.change(
@@ -765,6 +798,8 @@ def create_ui(input_dir=None):
                         dbscan_eps_input,
                         dbscan_eps_sensitivity_input,
                         dbscan_min_input,
+                        pc_bank_input,
+                        pc_sense_input,
                     ],
                 )
 
@@ -783,6 +818,8 @@ def create_ui(input_dir=None):
                         dbscan_eps_input,
                         dbscan_eps_sensitivity_input,
                         dbscan_min_input,
+                        pc_bank_input,
+                        pc_sense_input,
                     ],
                 )
 
@@ -801,6 +838,8 @@ def create_ui(input_dir=None):
                         dbscan_eps_input,
                         dbscan_eps_sensitivity_input,
                         dbscan_min_input,
+                        pc_bank_input,
+                        pc_sense_input,
                     ],
                 )
 
@@ -820,6 +859,8 @@ def create_ui(input_dir=None):
                         dbscan_eps_input,
                         dbscan_eps_sensitivity_input,
                         dbscan_min_input,
+                        pc_bank_input,
+                        pc_sense_input,
                     ],
                 )
 
@@ -869,7 +910,7 @@ def create_ui(input_dir=None):
                     with gr.Row():
                         plot_metric_select = gr.Dropdown(
                             choices=[m[0] for m in METRICS_CONFIG],
-                            value="Gradient & Color (Lines)",
+                            value="Oklab",
                             label="Select Metric to Plot",
                         )
                     plot_run_btn = gr.Button(
@@ -910,6 +951,8 @@ def create_ui(input_dir=None):
             dbscan_min_input,
             dbscan_eps_sensitivity_input,
             power_transform_input,
+            pc_bank_input,
+            pc_sense_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]
