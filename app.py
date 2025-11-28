@@ -381,8 +381,12 @@ def run_analysis(
 
 
 def calculate_vector_distance(vec_a, vec_b):
-    if not vec_a or not vec_b:
-        return ""
+    if not vec_a and not vec_b:
+        return "Please provide at least one vector."
+
+    results = []
+    v_a, v_b = None, None
+
     try:
 
         def parse(s):
@@ -396,33 +400,105 @@ def calculate_vector_distance(vec_a, vec_b):
             arr = np.array([float(x) for x in s.split(",") if x.strip()])
             return np.nan_to_num(arr, nan=0.0)
 
-        v1 = parse(vec_a)
-        v2 = parse(vec_b)
+        if vec_a:
+            v_a = parse(vec_a)
+            results.append("--- Vector A ---")
+            results.append(f"L1 Norm (Manhattan): {np.sum(np.abs(v_a)):.6f}")
+            results.append(f"L2 Norm (Euclidean): {np.linalg.norm(v_a):.6f}")
 
-        if v1.shape != v2.shape:
-            return f"Shape Mismatch: {v1.shape} vs {v2.shape}"
+        if vec_b:
+            v_b = parse(vec_b)
+            if vec_a:
+                results.append("")  # Add a newline for separation
+            results.append("--- Vector B ---")
+            results.append(f"L1 Norm (Manhattan): {np.sum(np.abs(v_b)):.6f}")
+            results.append(f"L2 Norm (Euclidean): {np.linalg.norm(v_b):.6f}")
 
-        # 1. Euclidean
-        dist_euc = np.linalg.norm(v1 - v2)
+        if v_a is not None and v_b is not None:
+            results.append("")
+            results.append("--- Distance (A vs B) ---")
+            if v_a.shape != v_b.shape:
+                results.append(f"Shape Mismatch: {v_a.shape} vs {v_b.shape}")
+            else:
+                dist_euc = np.linalg.norm(v_a - v_b)
+                dist_man = np.sum(np.abs(v_a - v_b))
+                n_a, n_b = np.linalg.norm(v_a), np.linalg.norm(v_b)
+                dist_cos = (
+                    1.0 - (np.dot(v_a, v_b) / (n_a * n_b))
+                    if n_a > 0 and n_b > 0
+                    else 1.0
+                )
+                results.append(f"Euclidean: {dist_euc:.6f}")
+                results.append(f"Cosine:    {dist_cos:.6f}")
+                results.append(f"Manhattan: {dist_man:.6f}")
 
-        # 2. Manhattan
-        dist_man = np.sum(np.abs(v1 - v2))
-
-        # 3. Cosine
-        n1 = np.linalg.norm(v1)
-        n2 = np.linalg.norm(v2)
-        if n1 == 0 or n2 == 0:
-            dist_cos = 1.0
-        else:
-            dist_cos = 1.0 - (np.dot(v1, v2) / (n1 * n2))
-
-        return (
-            f"Euclidean: {dist_euc:.6f}\n"
-            f"Cosine:    {dist_cos:.6f}\n"
-            f"Manhattan: {dist_man:.6f}"
-        )
+        return "\n".join(results)
     except Exception as e:
         return f"Error: {e}"
+
+
+def run_and_plot_distribution(image_path, height, width, overlap, metric_name):
+    """
+    Performs a dedicated analysis and generates a bar chart of the results.
+    """
+    if not image_path or not metric_name:
+        return None
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print(
+            "Error: Matplotlib is required. Please install it: pip install matplotlib"
+        )
+        return None
+
+    try:
+        # Setup Components
+        processor = ImageProcessor(device)
+        MetricClass = dict(METRICS_CONFIG)[metric_name]
+        metric = MetricClass()
+        analyzer = PatchAnalyzer(metric)
+
+        # Run a silent analysis
+        image_tensor = processor.load_image(image_path)
+        patches, grid_shape, _ = processor.extract_patches(
+            image_tensor, int(height), int(width), float(overlap)
+        )
+
+        # Get stats for all units
+        stats, matrix = analyzer.analyze(
+            patches,
+            grid_shape,
+            top_n=999999,
+            sort_by="mean",  # Not critical as we sort later
+            ascending=True,
+        )
+
+        if not stats:
+            return None
+
+        # Calculate L2 norm of each unit's distance vector
+        vec_norms = torch.sqrt(torch.nansum(matrix**2, dim=1))
+        values = vec_norms.cpu().numpy().tolist()
+        values.sort()
+
+        # Plotting logic
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.bar(range(len(values)), values)
+        ax.set_title(f"Distribution of Distance Vector Lengths for '{metric_name}'")
+        ax.set_xlabel("Unit Index (Sorted by Score)")
+        ax.set_ylabel("L2 Norm of Distance Vector")
+        ax.grid(axis="y", linestyle="--", alpha=0.7)
+        plt.tight_layout()
+
+        return fig
+
+    except Exception as e:
+        print(f"Error during plotting analysis: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return None
 
 
 # --- Build the UI ---
@@ -449,7 +525,7 @@ def create_ui(input_dir=None):
                         "Clustering (Hierarchical)",
                         "Clustering (DBSCAN)",
                     ],
-                    value="Clustering (K-means)",
+                    value="Clustering (DBSCAN)",
                     label="Analysis Mode",
                 )
                 with gr.Row():
@@ -663,7 +739,7 @@ def create_ui(input_dir=None):
                     with gr.Row():
                         vc_btn = gr.Button("Calculate Distance", variant="primary")
                         vc_clear = gr.Button("Clear")
-                    vc_res = gr.Textbox(label="Results", lines=4)
+                    vc_res = gr.Textbox(label="Results", lines=8)
                     vc_btn.click(
                         calculate_vector_distance,
                         inputs=[vc_a, vc_b],
@@ -676,6 +752,34 @@ def create_ui(input_dir=None):
                 # perf_output = gr.Markdown() # Removed global perf
                 json_output = gr.Code(language="json", label="Statistics")
                 analysis_state = gr.State({})  # Store matrix data per session
+
+                gr.Markdown("### 📈 Score Distribution")
+                with gr.Group():
+                    gr.Markdown(
+                        "Generate a plot of the sorted distance scores for all units using a specific metric. This runs a separate, dedicated analysis."
+                    )
+                    with gr.Row():
+                        plot_metric_select = gr.Dropdown(
+                            choices=[m[0] for m in METRICS_CONFIG],
+                            value="Gradient & Color (Lines)",
+                            label="Select Metric to Plot",
+                        )
+                    plot_run_btn = gr.Button(
+                        "📊 Generate Distribution Plot", variant="primary"
+                    )
+                    score_dist_plot = gr.Plot(label="Score Distribution")
+
+                    plot_run_btn.click(
+                        fn=run_and_plot_distribution,
+                        inputs=[
+                            img_input,
+                            h_input,
+                            w_input,
+                            overlap_input,
+                            plot_metric_select,
+                        ],
+                        outputs=[score_dist_plot],
+                    )
 
         # Common inputs for all buttons
         common_inputs = [
