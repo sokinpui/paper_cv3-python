@@ -240,7 +240,7 @@ def dbscan2(
     return final_labels
 
 
-def _get_k_distances(matrix: torch.Tensor, k: int) -> np.ndarray:
+def get_k_distances(matrix: torch.Tensor, k: int) -> np.ndarray:
     """
     Calculates the distance from each point to its k-th nearest neighbor.
     k: The rank of the nearest neighbor (e.g., k=1 means 2nd neighbor incl. self).
@@ -275,7 +275,7 @@ def find_dbscan_eps(matrix: torch.Tensor, min_samples: int) -> float:
         return 0.0
 
     k = max(1, min_samples - 1)
-    k_distances = _get_k_distances(matrix, k)
+    k_distances = get_k_distances(matrix, k)
 
     x_coords = np.arange(N)
     y_coords = k_distances

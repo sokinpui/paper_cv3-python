@@ -10,6 +10,7 @@ from analyzer import PatchAnalyzer
 from config import METRICS_CONFIG
 from globals import DEVICE
 from processor import ImageProcessor
+from clustering import get_k_distances, find_dbscan_eps
 from ui_helpers import (
     _redraw_metric_image,
     calculate_vector_distance,
@@ -394,18 +395,20 @@ def run_analysis(
         yield tuple(current_outputs)
 
 
-def run_and_plot_distribution(
+def run_and_plot_k_distance(
     image_path,
     height,
     width,
     overlap,
     metric_name,
     power_transform_degree,
+    min_samples,
+    eps,
 ):
     """
-    Performs a dedicated analysis and generates a bar chart of the results.
+    Performs a dedicated analysis and generates the K-Distance Graph.
     """
-    if not image_path or not metric_name:
+    if not image_path or not metric_name or int(min_samples) < 2:
         return None
 
     try:
@@ -431,32 +434,54 @@ def run_and_plot_distribution(
         patches, grid_shape, _ = processor.extract_patches(
             image_tensor, int(height), int(width), float(overlap)
         )
+        
+        # 1. Compute Similarity/Distance Matrix (N, N)
+        matrix = metric.compute(patches)
 
-        # Get stats for all units
-        stats, matrix, _ = analyzer.analyze(
-            patches,
-            grid_shape,
-            top_n=999999,
-            sort_by="mean",  # Not critical as we sort later
-            ascending=True,
-            power_transform_degree=float(power_transform_degree),
-        )
+        # Apply Power Transformation
+        if float(power_transform_degree) != 1.0:
+            matrix = torch.pow(matrix.clamp(min=0.0), float(power_transform_degree))
 
-        if not stats:
+        N = matrix.shape[0]
+        if N < int(min_samples):
             return None
 
-        # Calculate L2 norm of each unit's distance vector
-        vec_norms = torch.sqrt(torch.nansum(matrix**2, dim=1))
-        values = vec_norms.cpu().numpy().tolist()
-        values.sort()
+        # 2. Calculate K-Distances
+        k = max(1, int(min_samples) - 1)
+        k_distances = get_k_distances(matrix, k)
+        
+        # 3. Auto-Determine eps if user wants it (for insight)
+        calculated_eps = float(eps)
+        if calculated_eps <= 0.0:
+            # Only calculate if the matrix is large enough for elbow detection to be meaningful
+            if N >= int(min_samples):
+                calculated_eps = find_dbscan_eps(matrix, int(min_samples))
+            else:
+                calculated_eps = 0.0
 
         # Plotting logic
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.bar(range(len(values)), values)
-        ax.set_title(f"Distribution of Distance Vector Lengths for '{metric_name}'")
-        ax.set_xlabel("Unit Index (Sorted by Score)")
-        ax.set_ylabel("L2 Norm of Distance Vector")
+        x_coords = np.arange(N)
+        
+        # The Curve: Blue line
+        ax.plot(x_coords, k_distances, label=f'{k}-Distance', color='blue')
+        
+        # The Threshold: Red dashed line
+        eps_to_plot = calculated_eps if calculated_eps > 0.0 else float(eps)
+
+        if eps_to_plot > 0.0:
+            ax.axhline(
+                y=eps_to_plot,
+                color='red',
+                linestyle='--',
+                label=f'Eps Threshold ({eps_to_plot:.4f})'
+            )
+
+        ax.set_title(f"K-Distance Graph (k={k}) for '{metric_name}'")
+        ax.set_xlabel(f"Unit Index (Sorted by {k}-Distance)")
+        ax.set_ylabel(f"Distance to {k}-th Nearest Neighbor")
         ax.grid(axis="y", linestyle="--", alpha=0.7)
+        ax.legend()
         plt.tight_layout()
 
         return fig

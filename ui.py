@@ -7,7 +7,7 @@ from config import METRICS_CONFIG
 from event_handlers import (
     create_click_handler,
     run_analysis,
-    run_and_plot_distribution,
+    run_and_plot_k_distance,
     toggle_annotations,
 )
 from ui_helpers import calculate_vector_distance, clear_vector_inputs
@@ -346,10 +346,10 @@ def create_ui(input_dir=None):
                 json_output = gr.Code(language="json", label="Statistics")
                 analysis_state = gr.State({})  # Store matrix data per session
 
-                gr.Markdown("### 📈 Score Distribution")
+                gr.Markdown("### 📈 K-Distance Graph (Global Analysis)")
                 with gr.Group():
                     gr.Markdown(
-                        "Generate a plot of the sorted distance scores for all units using a specific metric. This runs a separate, dedicated analysis."
+                        "Analyze the distance matrix to find the optimal DBSCAN Eps (the 'Elbow' in the graph). This runs a separate, dedicated analysis."
                     )
                     with gr.Row():
                         plot_metric_select = gr.Dropdown(
@@ -357,13 +357,21 @@ def create_ui(input_dir=None):
                             value="Oklab",
                             label="Select Metric to Plot",
                         )
+                        plot_min_samples = gr.Number(
+                            value=4, label="K-Dist. Min Samples", precision=0
+                        )
+                        plot_eps_input = gr.Number(
+                            value=0.0,
+                            label="Plot Eps Threshold",
+                            info="If > 0.0, draws a horizontal line. If <= 0.0, auto-detects and plots (K-needle).",
+                        )
                     plot_run_btn = gr.Button(
-                        "📊 Generate Distribution Plot", variant="primary"
+                        "📊 Generate K-Distance Plot", variant="primary"
                     )
                     score_dist_plot = gr.Plot(label="Score Distribution")
 
                     plot_run_btn.click(
-                        fn=run_and_plot_distribution,
+                        fn=run_and_plot_k_distance,
                         inputs=[
                             img_input,
                             h_input,
@@ -371,6 +379,8 @@ def create_ui(input_dir=None):
                             overlap_input,
                             plot_metric_select,
                             power_transform_input,
+                            plot_min_samples,
+                            plot_eps_input,
                         ],
                         outputs=[score_dist_plot],
                     )
