@@ -82,42 +82,30 @@ def find_unit_index_from_click(x, y, grid_info):
 def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     """
     Handles click on the result image.
-    Populates Vector A or Vector B with the distance vector of the clicked unit.
+    Populates Vector A or Vector B and immediately calculates distance.
     """
-    if not state or metric_name not in state:
-        return vec_a, vec_b
+    new_vec_a, new_vec_b = vec_a, vec_b
 
-    data = state[metric_name]
-    # evt.index is [x, y]
-    idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
+    if state and metric_name in state:
+        data = state[metric_name]
+        idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
 
-    if idx < 0:
-        return vec_a, vec_b
+        if idx >= 0 and idx < len(data["matrix"]):
+            matrix = data["matrix"]
+            vector = matrix[idx]
+            vector = np.nan_to_num(vector, nan=0.0)
+            vec_str = ", ".join([f"{x:.4f}" for x in vector])
 
-    matrix = data["matrix"]
-    if idx >= len(matrix):
-        return vec_a, vec_b
+            # Logic: Fill A if empty. If A is full, fill B.
+            # If B is also full, overwrite B.
+            if not vec_a:
+                new_vec_a = vec_str
+            elif not vec_b:
+                new_vec_b = vec_str
+            else:
+                new_vec_b = vec_str
 
-    # Get row vector (distances from this unit to all others)
-    vector = matrix[idx]
-    # Replace NaN (self-comparison) with 0.0
-    vector = np.nan_to_num(vector, nan=0.0)
-
-    # Format as string for the text box
-    # Using 4 decimal places for conciseness
-    vec_str = ", ".join([f"{x:.4f}" for x in vector])
-
-    # Logic: Fill A if empty. If A is full, fill B.
-    # If B is also full, overwrite B (most recent click replaces B).
-    if not vec_a:
-        # Fill A
-        return vec_str, vec_b
-    elif not vec_b:
-        # Fill B
-        return vec_a, vec_str
-    else:
-        # Overwrite B
-        return vec_a, vec_str
+    return new_vec_a, new_vec_b, calculate_vector_distance(new_vec_a, new_vec_b)
 
 
 def create_click_handler(metric_name):
@@ -1027,7 +1015,7 @@ def create_ui(input_dir=None):
             img_comp.select(
                 fn=create_click_handler(name),
                 inputs=[analysis_state, vc_a, vc_b],
-                outputs=[vc_a, vc_b],
+                outputs=[vc_a, vc_b, vc_res],
             )
 
     return demo
