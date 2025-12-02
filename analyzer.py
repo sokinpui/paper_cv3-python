@@ -212,6 +212,52 @@ class PatchAnalyzer:
 
         return torch.from_numpy(labels).to(device)
 
+    def _dbscan2(
+        self,
+        matrix: torch.Tensor,
+        eps: float,
+        min_samples: int,
+    ) -> torch.Tensor:
+        """
+        Performs a two-stage DBSCAN.
+        1. Runs DBSCAN once.
+        2. Runs DBSCAN again on the noise points from the first run.
+        """
+        # Run DBSCAN #1
+        labels1 = self._dbscan(matrix, eps, min_samples)
+
+        noise_indices_tensor = torch.where(labels1 == -1)[0]
+
+        if len(noise_indices_tensor) < min_samples:
+            # Not enough noise points to form a new cluster, return original labels
+            return labels1
+
+        # Create a sub-matrix for the noise points
+        noise_matrix = matrix[noise_indices_tensor][:, noise_indices_tensor]
+
+        # Find new eps for the noise points
+        new_eps = self._find_dbscan_eps(noise_matrix, min_samples)
+
+        # If no good eps is found, or too few points, we stop.
+        if new_eps <= 0.0:
+            return labels1
+
+        # Run DBSCAN #2 on noise points
+        labels2 = self._dbscan(noise_matrix, new_eps, min_samples)
+
+        # Combine the results
+        final_labels = labels1.clone()
+        max_cluster_id = torch.max(labels1)
+
+        # Re-label the clusters from the second run to be unique
+        new_cluster_mask = labels2 != -1
+        if torch.any(new_cluster_mask):
+            # Offset new cluster IDs
+            offset_labels2 = labels2[new_cluster_mask] + max_cluster_id + 1
+            original_indices_of_new_clusters = noise_indices_tensor[new_cluster_mask]
+            final_labels[original_indices_of_new_clusters] = offset_labels2
+        return final_labels
+
     def _get_k_distances(self, matrix: torch.Tensor, k: int) -> np.ndarray:
         """
         Calculates the distance from each point to its k-th nearest neighbor.
@@ -302,8 +348,12 @@ class PatchAnalyzer:
         matrix_labels = None
         # Allow k < 2 for hierarchical (auto mode), but require k > 1 for kmeans/spectral
 
-        # Auto-determine eps for DBSCAN if selected and eps <= 0.0
-        if cluster_on_matrix and clustering_algorithm == "dbscan" and eps <= 0.0:
+        # Auto-determine eps for DBSCAN/DBSCAN2 if selected and eps <= 0.0
+        if (
+            cluster_on_matrix
+            and clustering_algorithm.startswith("dbscan")
+            and eps <= 0.0
+        ):
             eps = self._find_dbscan_eps(matrix, min_samples)
 
         if cluster_on_matrix:
@@ -321,6 +371,12 @@ class PatchAnalyzer:
                     )
 
                 matrix_labels = self._dbscan(matrix, eps, min_samples)
+            elif clustering_algorithm == "dbscan2":
+                if eps <= 0.0:
+                    raise ValueError(
+                        "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
+                    )
+                matrix_labels = self._dbscan2(matrix, eps, min_samples)
             else:
                 # Default to K-Means if k > 1
                 if k > 1:
