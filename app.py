@@ -842,7 +842,7 @@ def create_ui(input_dir=None):
                 )
 
                 cluster_show_scores = gr.Checkbox(
-                    value=False, label="Show Scores on Map", visible=True
+                    value=False, label="Show Unit's L2 norm", visible=True
                 )
 
                 # Visibility Logic

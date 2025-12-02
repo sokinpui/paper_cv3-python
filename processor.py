@@ -428,9 +428,17 @@ class ImageProcessor:
                 y = u.row * stride_h if u.row < rows - 1 else H - unit_h
                 x = u.col * stride_w if u.col < cols - 1 else W - unit_w
 
-                text = f"{u.l2_norm:.2f}"
-                font_scale = 0.8
-                thickness = 2
+                text = f"{u.l2_norm:.1f}"
+                font_scale = max(0.2, 0.4 * (min(unit_w, unit_h) / 50.0))
+                thickness = max(1, int(min(unit_w, unit_h) / 50.0))
+
+                (tw, th), _ = cv2.getTextSize(
+                    text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+                )
+
+                if tw > unit_w * 0.9:
+                    font_scale *= (unit_w * 0.9) / tw
+
                 (tw, th), _ = cv2.getTextSize(
                     text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
                 )
