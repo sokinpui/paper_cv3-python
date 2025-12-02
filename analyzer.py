@@ -328,13 +328,14 @@ class PatchAnalyzer:
         eps: float = 0.0,
         min_samples: int = 2,
         power_transform_degree: float = 0.4,
-    ) -> Tuple[List[UnitStats], torch.Tensor]:
+    ) -> Tuple[List[UnitStats], torch.Tensor, float]:
         """
         patches: (N, C, H, W)
         """
         N = patches.shape[0]
         if N < 2:
             raise ValueError("Need at least 2 units to compare.")
+        calculated_eps = eps
 
         # 1. Compute Similarity/Distance Matrix (N, N)
         # This is the heavy GPU operation
@@ -354,7 +355,7 @@ class PatchAnalyzer:
             and clustering_algorithm.startswith("dbscan")
             and eps <= 0.0
         ):
-            eps = self._find_dbscan_eps(matrix, min_samples)
+            calculated_eps = self._find_dbscan_eps(matrix, min_samples)
 
         if cluster_on_matrix:
             if clustering_algorithm == "hierarchical":
@@ -365,18 +366,18 @@ class PatchAnalyzer:
                 matrix_labels = self._spectral(matrix, k)
             elif clustering_algorithm == "dbscan":
                 # Guard Clause: eps must be > 0.0 now
-                if eps <= 0.0:
+                if calculated_eps <= 0.0:
                     raise ValueError(
                         "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
                     )
 
-                matrix_labels = self._dbscan(matrix, eps, min_samples)
+                matrix_labels = self._dbscan(matrix, calculated_eps, min_samples)
             elif clustering_algorithm == "dbscan2":
-                if eps <= 0.0:
+                if calculated_eps <= 0.0:
                     raise ValueError(
                         "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
                     )
-                matrix_labels = self._dbscan2(matrix, eps, min_samples)
+                matrix_labels = self._dbscan2(matrix, calculated_eps, min_samples)
             else:
                 # Default to K-Means if k > 1
                 if k > 1:
@@ -447,7 +448,7 @@ class PatchAnalyzer:
         # 5. Rank
         results.sort(key=lambda x: getattr(x, sort_by), reverse=not ascending)
 
-        return results[:top_n], matrix
+        return results[:top_n], matrix, calculated_eps
 
     def cluster_stats(
         self,

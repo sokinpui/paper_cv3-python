@@ -382,7 +382,7 @@ def run_analysis(
             # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
             k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
 
-            stats, matrix = analyzer.analyze(
+            stats, matrix, calculated_eps = analyzer.analyze(
                 patches,
                 grid_shape,
                 top_n=actual_top_n,
@@ -453,6 +453,8 @@ def run_analysis(
                 f"{metric_duration:.4f} s | "
                 f"{cps:,.0f} pairs/sec"
             )
+            if action_mode.startswith("clustering_dbscan") and float(dbscan_eps) <= 0.0:
+                perf_text += f" | Auto-Eps: {calculated_eps:.4f}"
 
             # Store Data in State for this metric
             new_state[name] = {
