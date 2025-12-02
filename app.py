@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import time
+import cv2
 
 import gradio as gr
 import numpy as np
@@ -82,30 +83,71 @@ def find_unit_index_from_click(x, y, grid_info):
 def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     """
     Handles click on the result image.
-    Populates Vector A or Vector B and immediately calculates distance.
+    1. Populates Vector A or Vector B and immediately calculates distance.
+    2. Shows the clicked unit and its neighbors in the Unit Inspector.
     """
     new_vec_a, new_vec_b = vec_a, vec_b
+    gallery_update = gr.update()
 
-    if state and metric_name in state:
-        data = state[metric_name]
-        idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
+    if not (state and metric_name in state):
+        return (
+            new_vec_a,
+            new_vec_b,
+            calculate_vector_distance(new_vec_a, new_vec_b),
+            gallery_update,
+        )
 
-        if idx >= 0 and idx < len(data["matrix"]):
-            matrix = data["matrix"]
-            vector = matrix[idx]
-            vector = np.nan_to_num(vector, nan=0.0)
-            vec_str = ", ".join([f"{x:.4f}" for x in vector])
+    data = state[metric_name]
+    idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
 
-            # Logic: Fill A if empty. If A is full, fill B.
-            # If B is also full, overwrite B.
-            if not vec_a:
-                new_vec_a = vec_str
-            elif not vec_b:
-                new_vec_b = vec_str
-            else:
-                new_vec_b = vec_str
+    if idx >= 0 and idx < len(data["matrix"]):
+        # 1. Vector Calculator Logic
+        matrix = data["matrix"]
+        vector = matrix[idx]
+        vector = np.nan_to_num(vector, nan=0.0)
+        vec_str = ", ".join([f"{x:.4f}" for x in vector])
 
-    return new_vec_a, new_vec_b, calculate_vector_distance(new_vec_a, new_vec_b)
+        if not vec_a:
+            new_vec_a = vec_str
+        elif not vec_b:
+            new_vec_b = vec_str
+        else:
+            new_vec_b = vec_str
+
+        # 2. Unit Inspector Logic
+        gallery_images = []
+        rows, cols = data["grid_shape"]
+        stride_h, stride_w = data["strides"]
+        unit_h, unit_w = data["unit_size"]
+        img_np_chw = state["image_tensor_np"].squeeze(0)
+        img_np_hwc = np.transpose(img_np_chw, (1, 2, 0))
+        img_np_hwc = (img_np_hwc * 255).clip(0, 255).astype(np.uint8)
+        H, W, _ = img_np_hwc.shape
+        clicked_r, clicked_c = divmod(idx, cols)
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                r, c = clicked_r + dr, clicked_c + dc
+                if 0 <= r < rows and 0 <= c < cols:
+                    y = H - unit_h if r == rows - 1 else r * stride_h
+                    x = W - unit_w if c == cols - 1 else c * stride_w
+                    patch = img_np_hwc[y : y + unit_h, x : x + unit_w, :].copy()
+                    if dr == 0 and dc == 0:
+                        cv2.rectangle(
+                            patch, (0, 0), (unit_w - 1, unit_h - 1), (255, 255, 0), 2
+                        )
+                    gallery_images.append(patch)
+                else:
+                    placeholder = np.zeros((unit_h, unit_w, 3), dtype=np.uint8)
+                    gallery_images.append(placeholder)
+        gallery_update = gr.update(value=gallery_images)
+    else:
+        gallery_update = gr.update(value=None)
+    return (
+        new_vec_a,
+        new_vec_b,
+        calculate_vector_distance(new_vec_a, new_vec_b),
+        gallery_update,
+    )
 
 
 def create_click_handler(metric_name):
@@ -938,6 +980,19 @@ def create_ui(input_dir=None):
                         clear_vector_inputs, inputs=None, outputs=[vc_a, vc_b, vc_res]
                     )
 
+                gr.Markdown("### 🔬 Unit Inspector")
+                gr.Markdown(
+                    "Click on a unit in the result image to see it and its neighbors here."
+                )
+                unit_inspector_gallery = gr.Gallery(
+                    label="Clicked Unit (Center) and Neighbors",
+                    show_label=False,
+                    columns=3,
+                    rows=3,
+                    object_fit="contain",
+                    height="auto",
+                )
+
                 # perf_output = gr.Markdown() # Removed global perf
                 json_output = gr.Code(language="json", label="Statistics")
                 analysis_state = gr.State({})  # Store matrix data per session
@@ -1015,7 +1070,7 @@ def create_ui(input_dir=None):
             img_comp.select(
                 fn=create_click_handler(name),
                 inputs=[analysis_state, vc_a, vc_b],
-                outputs=[vc_a, vc_b, vc_res],
+                outputs=[vc_a, vc_b, vc_res, unit_inspector_gallery],
             )
 
     return demo
