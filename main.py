@@ -4,6 +4,7 @@ import sys
 
 import torch
 
+import visualizer
 from analyzer import PatchAnalyzer
 from metrics import (
     CIELabMetric,
@@ -203,7 +204,7 @@ def main():
 
         # 5. Visualization
         if args.output:
-            processor.save_annotated_image(
+            visualizer.save_annotated_image(
                 image_tensor,
                 top_units,
                 args.height,
