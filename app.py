@@ -652,7 +652,12 @@ def create_ui(input_dir=None):
                 )
                 sort_input = gr.Dropdown(
                     choices=[
-                        "mean", "median", "std_dev", "min_score", "max_score", "l2_norm"
+                        "mean",
+                        "median",
+                        "std_dev",
+                        "min_score",
+                        "max_score",
+                        "l2_norm",
                     ],
                     value="mean",
                     label="Sort By Stat",

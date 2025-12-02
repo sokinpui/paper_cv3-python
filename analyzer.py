@@ -222,17 +222,17 @@ class PatchAnalyzer:
             return np.zeros(matrix.shape[0])
 
         dist_mat = matrix.detach().cpu().numpy()
-        
+
         # Sort each row (distances from point i to all other points)
         # The k-th neighbor (including self at index 0) is at index k.
         sorted_dists = np.sort(dist_mat, axis=1)
-        
+
         # k_distances is the distance to the (k+1)-th nearest neighbor (0-indexed k).
         k_distances = sorted_dists[:, k]
-        
+
         # Sort the k-distances for the elbow plot
         k_distances.sort()
-        
+
         return k_distances
 
     def _find_dbscan_eps(self, matrix: torch.Tensor, min_samples: int) -> float:
@@ -244,28 +244,28 @@ class PatchAnalyzer:
         N = matrix.shape[0]
         if N < 2:
             return 0.0
-            
+
         k = max(1, min_samples - 1)
         k_distances = self._get_k_distances(matrix, k)
-        
+
         x_coords = np.arange(N)
         y_coords = k_distances
-        
+
         # Line equation: Ax + By + C = 0. A = y2 - y1, B = x1 - x2, C = -A*x1 - B*y1
         A = y_coords[-1] - y_coords[0]
         B = x_coords[0] - x_coords[-1]
         C = -A * x_coords[0] - B * y_coords[0]
-        
+
         denominator = np.sqrt(A**2 + B**2)
         if np.isclose(denominator, 0.0):
-            return np.median(y_coords) # Flat line, use median
+            return np.median(y_coords)  # Flat line, use median
 
         numerator = np.abs(A * x_coords + B * y_coords + C)
         distances = numerator / denominator
 
         # Find the point with the maximum distance (the knee)
         knee_index = np.argmax(distances)
-        
+
         return float(y_coords[knee_index])
 
     def analyze(
@@ -316,7 +316,9 @@ class PatchAnalyzer:
             elif clustering_algorithm == "dbscan":
                 # Guard Clause: eps must be > 0.0 now
                 if eps <= 0.0:
-                    raise ValueError("DBSCAN eps could not be automatically determined or is invalid (<= 0.0).")
+                    raise ValueError(
+                        "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
+                    )
 
                 matrix_labels = self._dbscan(matrix, eps, min_samples)
             else:
