@@ -175,11 +175,13 @@ class ImageProcessor:
         grid_shape: Tuple[int, int],
         strides: Tuple[int, int],
         is_bgr: bool = False,
+        selected_unit_index: int = -1,
     ):
         """
         Helper to draw individual rectangles and labels for units.
         """
         box_color = (0, 255, 0)  # Green
+        selected_box_color = (255, 255, 0)  # Yellow
         text_color = (0, 0, 255) if is_bgr else (255, 0, 0)  # Red
 
         rows, cols = grid_shape
@@ -203,7 +205,10 @@ class ImageProcessor:
                 x = c * stride_w
 
             # Draw Rectangle (Individual)
-            cv2.rectangle(img, (x, y), (x + unit_w, y + unit_h), box_color, 2)
+            is_selected = unit.index == selected_unit_index
+            color = selected_box_color if is_selected else box_color
+            thickness = 4 if is_selected else 2
+            cv2.rectangle(img, (x, y), (x + unit_w, y + unit_h), color, thickness)
 
             label = f"#{i+1}"
             cv2.putText(
@@ -256,6 +261,7 @@ class ImageProcessor:
         unit_w: int,
         grid_shape: Tuple[int, int],
         strides: Tuple[int, int],
+        selected_unit_index: int = -1,
     ) -> np.ndarray:
         """
         Returns the annotated image as an RGB numpy array for Web UI display.
@@ -271,7 +277,14 @@ class ImageProcessor:
         img_out = img_np.copy()
 
         self._draw_annotations(
-            img_out, units, unit_h, unit_w, grid_shape, strides, is_bgr=False
+            img_out,
+            units,
+            unit_h,
+            unit_w,
+            grid_shape,
+            strides,
+            is_bgr=False,
+            selected_unit_index=selected_unit_index,
         )
 
         return img_out
@@ -285,6 +298,7 @@ class ImageProcessor:
         unit_h: int,
         unit_w: int,
         stat_name: str = "mean",
+        selected_unit_index: int = -1,
     ) -> np.ndarray:
         """
         Creates a heatmap overlay based on the 'mean' score of each unit.
@@ -351,6 +365,19 @@ class ImageProcessor:
         alpha = 0.6
         cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
 
+        # Highlight selected unit on top of the heatmap
+        if selected_unit_index >= 0:
+            selected_unit = next(
+                (u for u in units if u.index == selected_unit_index), None
+            )
+            if selected_unit:
+                r, c = selected_unit.row, selected_unit.col
+                y = r * stride_h if r < rows - 1 else H - unit_h
+                x = c * stride_w if c < cols - 1 else W - unit_w
+                cv2.rectangle(
+                    img_np, (x, y), (x + unit_w, y + unit_h), (255, 255, 0), 4
+                )  # Yellow, thick border
+
         # Draw borders for all grid cells
         border_color = (0, 0, 0)  # Black
         for r in range(rows):
@@ -370,6 +397,7 @@ class ImageProcessor:
         unit_h: int,
         unit_w: int,
         show_scores: bool = False,
+        selected_unit_index: int = -1,
     ) -> np.ndarray:
         """
         Creates a visualization where each unit is colored by its cluster_id.
@@ -410,6 +438,19 @@ class ImageProcessor:
 
         alpha = 0.5
         cv2.addWeighted(overlay, alpha, img_np, 1 - alpha, 0, img_np)
+
+        # Highlight selected unit on top of the cluster map
+        if selected_unit_index >= 0:
+            selected_unit = next(
+                (u for u in units if u.index == selected_unit_index), None
+            )
+            if selected_unit:
+                r, c = selected_unit.row, selected_unit.col
+                y = r * stride_h if r < rows - 1 else H - unit_h
+                x = c * stride_w if c < cols - 1 else W - unit_w
+                cv2.rectangle(
+                    img_np, (x, y), (x + unit_w, y + unit_h), (255, 255, 0), 4
+                )  # Yellow, thick border
 
         # Draw borders for all grid cells
         border_color = (0, 0, 0)  # Black

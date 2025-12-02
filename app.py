@@ -80,14 +80,74 @@ def find_unit_index_from_click(x, y, grid_info):
     return best_idx
 
 
+def _redraw_metric_image(
+    processor, image_tensor, metric_data, selected_unit_idx=-1, show_overlay=True
+):
+    """Helper to redraw a single metric's result image."""
+    # If overlay is off, just return the raw image
+    if not show_overlay:
+        if image_tensor.dim() == 4:
+            image_tensor = image_tensor.squeeze(0)
+        img_np_rgb = image_tensor.permute(1, 2, 0).cpu().numpy()
+        return (img_np_rgb * 255).clip(0, 255).astype(np.uint8)
+
+    action_mode = metric_data["action_mode"]
+    stats = metric_data["stats"]
+    grid_shape = metric_data["grid_shape"]
+    strides = metric_data["strides"]
+    height, width = metric_data["unit_size"]
+
+    if action_mode in [
+        "clustering",
+        "clustering2",
+        "clustering_hierarchical",
+        "clustering_spectral",
+        "clustering_dbscan",
+        "clustering_dbscan2",
+    ]:
+        return processor.create_cluster_map(
+            image_tensor,
+            stats,
+            grid_shape,
+            strides,
+            height,
+            width,
+            show_scores=metric_data["cluster_show_scores"],
+            selected_unit_index=selected_unit_idx,
+        )
+    elif action_mode == "heatmap":
+        return processor.create_heatmap(
+            image_tensor,
+            stats,
+            grid_shape,
+            strides,
+            height,
+            width,
+            stat_name=metric_data["sort_by"],
+            selected_unit_index=selected_unit_idx,
+        )
+    else:  # 'top_n' or 'all'
+        return processor.get_annotated_rgb(
+            image_tensor,
+            stats,
+            height,
+            width,
+            grid_shape,
+            strides,
+            selected_unit_index=selected_unit_idx,
+        )
+
+
 def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     """
     Handles click on the result image.
     1. Populates Vector A or Vector B and immediately calculates distance.
     2. Shows the clicked unit and its neighbors in the Unit Inspector.
+    3. Highlights the clicked unit on the result image.
     """
     new_vec_a, new_vec_b = vec_a, vec_b
     gallery_update = gr.update()
+    image_update = gr.update()  # For the specific metric's image
 
     if not (state and metric_name in state):
         return (
@@ -95,58 +155,89 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
             new_vec_b,
             calculate_vector_distance(new_vec_a, new_vec_b),
             gallery_update,
+            image_update,
         )
 
     data = state[metric_name]
     idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
 
-    if idx >= 0 and idx < len(data["matrix"]):
-        # 1. Vector Calculator Logic
-        matrix = data["matrix"]
-        vector = matrix[idx]
-        vector = np.nan_to_num(vector, nan=0.0)
-        vec_str = ", ".join([f"{x:.4f}" for x in vector])
+    # If click is invalid, do nothing.
+    if idx < 0 or idx >= len(data["matrix"]):
+        return (
+            vec_a,
+            vec_b,
+            calculate_vector_distance(vec_a, vec_b),
+            gallery_update,
+            image_update,
+        )
 
-        if not vec_a:
-            new_vec_a = vec_str
-        elif not vec_b:
-            new_vec_b = vec_str
-        else:
-            new_vec_b = vec_str
-
-        # 2. Unit Inspector Logic
-        gallery_images = []
-        rows, cols = data["grid_shape"]
-        stride_h, stride_w = data["strides"]
-        unit_h, unit_w = data["unit_size"]
-        img_np_chw = state["image_tensor_np"].squeeze(0)
-        img_np_hwc = np.transpose(img_np_chw, (1, 2, 0))
-        img_np_hwc = (img_np_hwc * 255).clip(0, 255).astype(np.uint8)
-        H, W, _ = img_np_hwc.shape
-        clicked_r, clicked_c = divmod(idx, cols)
-        for dr in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                r, c = clicked_r + dr, clicked_c + dc
-                if 0 <= r < rows and 0 <= c < cols:
-                    y = H - unit_h if r == rows - 1 else r * stride_h
-                    x = W - unit_w if c == cols - 1 else c * stride_w
-                    patch = img_np_hwc[y : y + unit_h, x : x + unit_w, :].copy()
-                    if dr == 0 and dc == 0:
-                        cv2.rectangle(
-                            patch, (0, 0), (unit_w - 1, unit_h - 1), (255, 255, 0), 2
-                        )
-                    gallery_images.append(patch)
-                else:
-                    placeholder = np.zeros((unit_h, unit_w, 3), dtype=np.uint8)
-                    gallery_images.append(placeholder)
-        gallery_update = gr.update(value=gallery_images)
+    # 1. Update selection state (toggle)
+    current_selected = data.get("selected_unit_idx", -1)
+    if current_selected == idx:
+        data["selected_unit_idx"] = -1  # Deselect
     else:
-        gallery_update = gr.update(value=None)
+        data["selected_unit_idx"] = idx  # Select
+
+    # 2. Vector Calculator Logic
+    matrix = data["matrix"]
+    vector = matrix[idx]
+    vector = np.nan_to_num(vector, nan=0.0)
+    vec_str = ", ".join([f"{x:.4f}" for x in vector])
+
+    if not vec_a:
+        new_vec_a = vec_str
+    elif not vec_b:
+        new_vec_b = vec_str
+    else:
+        new_vec_b = vec_str  # Overwrite B if A and B are full
+
+    # 3. Unit Inspector Logic (Copied from original, unchanged)
+    gallery_images = []
+    rows, cols = data["grid_shape"]
+    stride_h, stride_w = data["strides"]
+    unit_h, unit_w = data["unit_size"]
+    img_np_chw = state["image_tensor_np"].squeeze(0)
+    img_np_hwc = np.transpose(img_np_chw, (1, 2, 0))
+    img_np_hwc = (img_np_hwc * 255).clip(0, 255).astype(np.uint8)
+    H, W, _ = img_np_hwc.shape
+    clicked_r, clicked_c = divmod(idx, cols)
+    for dr in [-1, 0, 1]:
+        for dc in [-1, 0, 1]:
+            r, c = clicked_r + dr, clicked_c + dc
+            if 0 <= r < rows and 0 <= c < cols:
+                y = H - unit_h if r == rows - 1 else r * stride_h
+                x = W - unit_w if c == cols - 1 else c * stride_w
+                patch = img_np_hwc[y : y + unit_h, x : x + unit_w, :].copy()
+                if dr == 0 and dc == 0:
+                    cv2.rectangle(
+                        patch, (0, 0), (unit_w - 1, unit_h - 1), (255, 255, 0), 2
+                    )
+                gallery_images.append(patch)
+            else:
+                placeholder = np.zeros((unit_h, unit_w, 3), dtype=np.uint8)
+                gallery_images.append(placeholder)
+    gallery_update = gr.update(value=gallery_images)
+
+    # 4. Redraw image with highlight
+    processor = ImageProcessor(device)
+    image_tensor = torch.from_numpy(state["image_tensor_np"]).to(device)
+    overlay_visible = state.get("overlay_visible", True)
+
+    result_img = _redraw_metric_image(
+        processor,
+        image_tensor,
+        data,
+        data["selected_unit_idx"],
+        show_overlay=overlay_visible,
+    )
+    image_update = gr.update(value=result_img)
+
     return (
         new_vec_a,
         new_vec_b,
         calculate_vector_distance(new_vec_a, new_vec_b),
         gallery_update,
+        image_update,
     )
 
 
@@ -187,57 +278,25 @@ def toggle_annotations(state):
     img_np_rgb = (img_np_rgb * 255).clip(0, 255).astype(np.uint8)
 
     image_outputs = []
+    processor = ImageProcessor(device)
+    image_tensor = torch.from_numpy(state["image_tensor_np"]).to(device)
 
     for name, _ in METRICS_CONFIG:
         if name not in state:
             image_outputs.append(gr.update())
             continue
 
-        if not overlay_visible:
-            # If hiding overlay, just show the raw image
-            image_outputs.append(gr.update(value=img_np_rgb.copy()))
-            continue
-
         # --- Redraw annotations ---
         metric_data = state[name]
-        action_mode = metric_data["action_mode"]
-        stats = metric_data["stats"]
-        grid_shape = metric_data["grid_shape"]
-        strides = metric_data["strides"]
-        height, width = metric_data["unit_size"]
+        selected_idx = metric_data.get("selected_unit_idx", -1)
 
-        result_img = None
-        if action_mode in [
-            "clustering",
-            "clustering2",
-            "clustering_hierarchical",
-            "clustering_spectral",
-            "clustering_dbscan",
-            "clustering_dbscan2",
-        ]:
-            result_img = processor.create_cluster_map(
-                image_tensor,
-                stats,
-                grid_shape,
-                strides,
-                height,
-                width,
-                show_scores=metric_data["cluster_show_scores"],
-            )
-        elif action_mode == "heatmap":
-            result_img = processor.create_heatmap(
-                image_tensor,
-                stats,
-                grid_shape,
-                strides,
-                height,
-                width,
-                stat_name=metric_data["sort_by"],
-            )
-        else:  # 'top_n' or 'all'
-            result_img = processor.get_annotated_rgb(
-                image_tensor, stats, height, width, grid_shape, strides
-            )
+        result_img = _redraw_metric_image(
+            processor,
+            image_tensor,
+            metric_data,
+            selected_idx,
+            show_overlay=overlay_visible,
+        )
 
         image_outputs.append(gr.update(value=result_img))
 
@@ -402,39 +461,22 @@ def run_analysis(
                     threshold_n=float(cluster_threshold_n),
                 )
 
+            # Store Data in State for this metric
+            new_state[name] = {
+                "matrix": matrix.detach().cpu().numpy(),
+                "grid_shape": grid_shape,
+                "strides": strides,
+                "unit_size": (int(height), int(width)),
+                "img_shape": (img_h, img_w),
+                "stats": stats,
+                "action_mode": action_mode,
+                "cluster_show_scores": cluster_show_scores,
+                "sort_by": sort_by,
+                "selected_unit_idx": -1,
+            }
+
             # Generate Result Image based on Mode
-            if action_mode in [
-                "clustering",
-                "clustering2",
-                "clustering_hierarchical",
-                "clustering_spectral",
-                "clustering_dbscan",
-                "clustering_dbscan2",
-            ]:
-                result_img = processor.create_cluster_map(
-                    image_tensor,
-                    stats,
-                    grid_shape,
-                    strides,
-                    int(height),
-                    int(width),
-                    show_scores=cluster_show_scores,
-                )
-            elif action_mode == "heatmap":
-                result_img = processor.create_heatmap(
-                    image_tensor,
-                    stats,
-                    grid_shape,
-                    strides,
-                    int(height),
-                    int(width),
-                    stat_name=sort_by,
-                )
-            else:
-                # top_n, all: Show annotated boxes
-                result_img = processor.get_annotated_rgb(
-                    image_tensor, stats, int(height), int(width), grid_shape, strides
-                )
+            result_img = _redraw_metric_image(processor, image_tensor, new_state[name])
 
             t_metric_end = time.time()
             metric_duration = t_metric_end - t_metric_start
@@ -451,19 +493,6 @@ def run_analysis(
             )
             if action_mode.startswith("clustering_dbscan") and float(dbscan_eps) <= 0.0:
                 perf_text += f" | Auto-Eps: {calculated_eps:.4f}"
-
-            # Store Data in State for this metric
-            new_state[name] = {
-                "matrix": matrix.detach().cpu().numpy(),
-                "grid_shape": grid_shape,
-                "strides": strides,
-                "unit_size": (int(height), int(width)),
-                "img_shape": (img_h, img_w),
-                "stats": stats,
-                "action_mode": action_mode,
-                "cluster_show_scores": cluster_show_scores,
-                "sort_by": sort_by,
-            }
 
             # Update specific slots in the output list
             current_outputs[base_idx] = gr.update(visible=True)
@@ -1025,7 +1054,7 @@ def create_ui(input_dir=None):
             img_comp.select(
                 fn=create_click_handler(name),
                 inputs=[analysis_state, vc_a, vc_b],
-                outputs=[vc_a, vc_b, vc_res, unit_inspector_gallery],
+                outputs=[vc_a, vc_b, vc_res, unit_inspector_gallery, img_comp],
             )
 
     return demo
