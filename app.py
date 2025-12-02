@@ -612,7 +612,7 @@ def create_ui(input_dir=None):
                         "Clustering (DBSCAN)",
                         "Clustering (DBSCAN2)",
                     ],
-                    value="Clustering (DBSCAN2)",
+                    value="Clustering (DBSCAN)",
                     label="Analysis Mode",
                 )
                 with gr.Row():
