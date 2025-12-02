@@ -689,7 +689,7 @@ def create_ui(input_dir=None):
                     visible=False,
                 )
                 dbscan_min_input = gr.Number(
-                    value=2,
+                    value=4,
                     label="DBSCAN Min Samples",
                     precision=0,
                     visible=False,
