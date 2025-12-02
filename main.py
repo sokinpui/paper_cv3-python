@@ -116,18 +116,6 @@ def main():
         default=0.4,
         help="Raise distance to a power (distance^n). Default is 1.0 (no change).",
     )
-    parser.add_argument(
-        "--oklab_multiplier",
-        type=float,
-        default=10.0,
-        help="Oklab metric: distance multiplier.",
-    )
-    parser.add_argument(
-        "--oklab_exponent",
-        type=float,
-        default=2.5,
-        help="Oklab metric: distance exponent.",
-    )
 
     args = parser.parse_args()
 
@@ -162,9 +150,7 @@ def main():
     elif args.metric == "pixel_color":
         metric = PixelWiseColorMetric()
     elif args.metric == "human_eye":
-        metric = HumanEyeColorMetric(
-            multiplier=args.oklab_multiplier, exponent=args.oklab_exponent
-        )
+        metric = HumanEyeColorMetric()
     elif args.metric == "mse":
         metric = MSEMetric()
     else:

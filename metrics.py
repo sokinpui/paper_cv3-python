@@ -152,10 +152,6 @@ class GradientColorMetric(CIELabMetric):
 
 
 class HumanEyeColorMetric(MetricStrategy):
-    def __init__(self, multiplier: float = 10.0, exponent: float = 2.5):
-        self.multiplier = multiplier
-        self.exponent = exponent
-
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
         Uses Oklab color space (perceptually uniform) + Gaussian Blur.
@@ -183,7 +179,7 @@ class HumanEyeColorMetric(MetricStrategy):
         dists = torch.cdist(flat_vec, flat_vec, p=2)
 
         H, W = patches.shape[2], patches.shape[3]
-        return (self.multiplier * dists) ** self.exponent
+        return dists
 
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:
         oklab = self._rgb_to_oklab(patches)

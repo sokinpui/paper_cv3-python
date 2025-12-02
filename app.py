@@ -262,8 +262,6 @@ def run_analysis(
     dbscan_eps,
     dbscan_min_samples,
     power_transform_degree,
-    oklab_multiplier,
-    oklab_exponent,
     current_state,
 ):
     """
@@ -353,9 +351,7 @@ def run_analysis(
 
             # Instantiate and Analyze
             if name == "Oklab":
-                metric = MetricClass(
-                    multiplier=float(oklab_multiplier), exponent=float(oklab_exponent)
-                )
+                metric = MetricClass()
             else:
                 metric = MetricClass()
 
@@ -559,8 +555,6 @@ def run_and_plot_distribution(
     overlap,
     metric_name,
     power_transform_degree,
-    oklab_multiplier,
-    oklab_exponent,
 ):
     """
     Performs a dedicated analysis and generates a bar chart of the results.
@@ -581,9 +575,7 @@ def run_and_plot_distribution(
         processor = ImageProcessor(device)
         MetricClass = dict(METRICS_CONFIG)[metric_name]
         if metric_name == "Oklab":
-            metric = MetricClass(
-                multiplier=float(oklab_multiplier), exponent=float(oklab_exponent)
-            )
+            metric = MetricClass()
         else:
             metric = MetricClass()
         analyzer = PatchAnalyzer(metric)
@@ -595,7 +587,7 @@ def run_and_plot_distribution(
         )
 
         # Get stats for all units
-        stats, matrix = analyzer.analyze(
+        stats, matrix, _ = analyzer.analyze(
             patches,
             grid_shape,
             top_n=999999,
@@ -669,34 +661,6 @@ def create_ui(input_dir=None):
                     choices=metric_names,
                     value=["Oklab"],
                     label="Distance Functions",
-                )
-
-                with gr.Group() as oklab_settings:
-                    gr.Markdown("##### Oklab Settings")
-                    oklab_multiplier_input = gr.Slider(
-                        minimum=1.0,
-                        maximum=100.0,
-                        value=1.0,
-                        step=1,
-                        label="Distance Multiplier",
-                        info="Amplifies raw distance before exponent. Higher = more sensitive.",
-                    )
-                    oklab_exponent_input = gr.Slider(
-                        minimum=1,
-                        maximum=20.0,
-                        value=1,
-                        step=0.1,
-                        label="Distance Exponent",
-                        info="Power to raise distance to. >1 exaggerates large distances.",
-                    )
-
-                def update_oklab_visibility(selected_metrics):
-                    return gr.update(visible="Oklab" in selected_metrics)
-
-                distance_funcs_input.change(
-                    fn=update_oklab_visibility,
-                    inputs=distance_funcs_input,
-                    outputs=[oklab_settings],
                 )
 
                 gr.Markdown("### Settings")
@@ -941,13 +905,6 @@ def create_ui(input_dir=None):
                     ],
                 )
 
-                # Trigger oklab visibility on load
-                demo.load(
-                    fn=update_oklab_visibility,
-                    inputs=distance_funcs_input,
-                    outputs=[oklab_settings],
-                )
-
             with gr.Column(scale=3):
                 gr.Markdown("### 📊 Analysis Results (By Distance Function)")
 
@@ -1024,8 +981,6 @@ def create_ui(input_dir=None):
                             overlap_input,
                             plot_metric_select,
                             power_transform_input,
-                            oklab_multiplier_input,
-                            oklab_exponent_input,
                         ],
                         outputs=[score_dist_plot],
                     )
@@ -1049,8 +1004,6 @@ def create_ui(input_dir=None):
             dbscan_eps_input,
             dbscan_min_input,
             power_transform_input,
-            oklab_multiplier_input,
-            oklab_exponent_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]
