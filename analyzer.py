@@ -163,41 +163,12 @@ class PatchAnalyzer:
         matrix: torch.Tensor,
         eps: float,
         min_samples: int,
-        eps_sensitivity: float,
     ) -> torch.Tensor:
         """
         DBSCAN density-based clustering on distance matrix.
         """
-        # Heuristic for eps if Auto (<= 0)
         if eps <= 0:
-            # 1. Get the distance to the nearest neighbor for every point.
-            # We use kth=2 because the closest point (kth=1) is the point itself (dist=0).
-            # topk returns largest, so we negate matrix or use sort. Sort is safer for small N.
-            sorted_dists, _ = torch.sort(matrix, dim=1)
-
-            # sorted_dists[:, 0] is 0.0 (self).
-            # sorted_dists[:, 1] is the distance to the 1st nearest neighbor.
-            knn_dists = sorted_dists[:, 1]
-
-            # 2. Calculate the 'Normal' noise level based on these neighbors.
-            # We use median to ignore the fact that anomalies have large nearest-neighbor distances.
-            # We add a small epsilon (1e-6) to prevent 0.0 if the image is perfectly synthetic.
-            median_nn = torch.median(knn_dists).item()
-
-            if median_nn < 1e-6:
-                # If the background is mathematically perfect (0.0 variation),
-                # we fall back to the mean of the knn_dists to capture slight noise.
-                base_eps = knn_dists.mean().item()
-            else:
-                base_eps = median_nn
-
-            # 3. Apply a multiplier (Sensitivity).
-            # 2.5 is a standard rule of thumb: Allow 2.5x the median neighbor distance.
-            eps = base_eps * eps_sensitivity
-
-            # 4. Hard safety floor for purely synthetic images where calculated eps might be 0.0
-            if eps < 1e-4:
-                eps = 0.05
+            raise ValueError("eps must be a positive value for DBSCAN.")
 
         device = matrix.device
         N = matrix.shape[0]
@@ -241,93 +212,6 @@ class PatchAnalyzer:
 
         return torch.from_numpy(labels).to(device)
 
-    def _merge_spatial_clusters(
-        self, stats: List[UnitStats], grid_shape: Tuple[int, int]
-    ) -> List[UnitStats]:
-        if not stats:
-            return stats
-
-        rows, cols = grid_shape
-        unit_map = {(s.row, s.col): s for s in stats}
-
-        # 1. Find background cluster (most frequent, non-noise)
-        cluster_counts = {}
-        for s in stats:
-            cluster_counts[s.cluster_id] = cluster_counts.get(s.cluster_id, 0) + 1
-
-        if not cluster_counts:
-            return stats  # No non-noise clusters to merge
-
-        background_cluster_id = max(cluster_counts, key=cluster_counts.get)
-        anomalous_clusters = {
-            cid for cid in cluster_counts if cid != background_cluster_id
-        }
-
-        if not anomalous_clusters:
-            return stats  # Nothing to merge
-
-        # 2. Build adjacency graph of anomalous clusters
-        adj = {cid: set() for cid in anomalous_clusters}
-        for r in range(rows):
-            for c in range(cols):
-                current_unit = unit_map.get((r, c))
-                if (
-                    not current_unit
-                    or current_unit.cluster_id not in anomalous_clusters
-                ):
-                    continue
-
-                current_cid = current_unit.cluster_id
-
-                # Check neighbors (4-connectivity)
-                for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                    nr, nc = r + dr, c + dc
-                    neighbor_unit = unit_map.get((nr, nc))
-
-                    if (
-                        not neighbor_unit
-                        or neighbor_unit.cluster_id not in anomalous_clusters
-                    ):
-                        continue
-
-                    neighbor_cid = neighbor_unit.cluster_id
-                    if current_cid != neighbor_cid:
-                        adj[current_cid].add(neighbor_cid)
-                        adj[neighbor_cid].add(current_cid)
-
-        # 3. Find connected components (groups of touching clusters)
-        visited = set()
-        components = []
-        for cid in anomalous_clusters:
-            if cid in visited:
-                continue
-
-            component = []
-            q = [cid]
-            visited.add(cid)
-            while q:
-                curr_cid = q.pop(0)
-                component.append(curr_cid)
-                for neighbor_cid in adj[curr_cid]:
-                    if neighbor_cid not in visited:
-                        visited.add(neighbor_cid)
-                        q.append(neighbor_cid)
-            components.append(component)
-
-        # 4. Re-label clusters based on components
-        max_id = max(s.cluster_id for s in stats) if stats else -1
-        relabel_map = {}
-        for i, component in enumerate(components):
-            new_cid = max_id + 1 + i
-            for old_cid in component:
-                relabel_map[old_cid] = new_cid
-
-        # 5. Apply new labels
-        for s in stats:
-            s.cluster_id = relabel_map.get(s.cluster_id, s.cluster_id)
-
-        return stats
-
     def analyze(
         self,
         patches: torch.Tensor,
@@ -342,7 +226,6 @@ class PatchAnalyzer:
         eps: float = 0.0,
         min_samples: int = 2,
         power_transform_degree: float = 0.4,
-        dbscan_eps_sensitivity: float = 2.0,
     ) -> Tuple[List[UnitStats], torch.Tensor]:
         """
         patches: (N, C, H, W)
@@ -369,10 +252,8 @@ class PatchAnalyzer:
                 )
             elif clustering_algorithm == "spectral":
                 matrix_labels = self._spectral(matrix, k)
-            elif clustering_algorithm in ["dbscan", "dbscan_spatial_merge"]:
-                matrix_labels = self._dbscan(
-                    matrix, eps, min_samples, dbscan_eps_sensitivity
-                )
+            elif clustering_algorithm == "dbscan":
+                matrix_labels = self._dbscan(matrix, eps, min_samples)
             else:
                 # Default to K-Means if k > 1
                 if k > 1:
@@ -439,10 +320,6 @@ class PatchAnalyzer:
                 l2_norm=l2_norms[i].item(),
             )
             results.append(stats)
-
-        # Post-process for DBSCAN2: merge spatially connected anomalous clusters
-        if cluster_on_matrix and clustering_algorithm == "dbscan_spatial_merge":
-            results = self._merge_spatial_clusters(results, grid_shape)
 
         # 5. Rank
         results.sort(key=lambda x: getattr(x, sort_by), reverse=not ascending)

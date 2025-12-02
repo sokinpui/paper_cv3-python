@@ -149,7 +149,6 @@ def run_analysis(
     hierarchical_method,
     dbscan_eps,
     dbscan_min_samples,
-    dbscan_eps_sensitivity,
     power_transform_degree,
     oklab_multiplier,
     oklab_exponent,
@@ -170,7 +169,6 @@ def run_analysis(
         "Clustering (Hierarchical)": "clustering_hierarchical",
         "Clustering (Spectral)": "clustering_spectral",
         "Clustering (DBSCAN)": "clustering_dbscan",
-        "Clustering (DBSCAN2)": "clustering_dbscan2",
     }
     action_mode = mode_map.get(action_mode_ui, "top_n")
 
@@ -217,7 +215,6 @@ def run_analysis(
             "clustering_hierarchical",
             "clustering_spectral",
             "clustering_dbscan",
-            "clustering_dbscan2",
         ]:
             # Use a number larger than any possible grid count
             actual_top_n = 999999
@@ -252,7 +249,6 @@ def run_analysis(
                 "clustering_hierarchical",
                 "clustering_spectral",
                 "clustering_dbscan",
-                "clustering_dbscan2",
             ]
             algo = "kmeans"
             if action_mode == "clustering_hierarchical":
@@ -261,8 +257,6 @@ def run_analysis(
                 algo = "spectral"
             elif action_mode == "clustering_dbscan":
                 algo = "dbscan"
-            elif action_mode == "clustering_dbscan2":
-                algo = "dbscan_spatial_merge"
 
             # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
             k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
@@ -280,7 +274,6 @@ def run_analysis(
                 eps=float(dbscan_eps),
                 min_samples=int(dbscan_min_samples),
                 power_transform_degree=float(power_transform_degree),
-                dbscan_eps_sensitivity=float(dbscan_eps_sensitivity),
             )
 
             # Perform Clustering (Stats-based) if requested
@@ -299,7 +292,6 @@ def run_analysis(
                 "clustering_hierarchical",
                 "clustering_spectral",
                 "clustering_dbscan",
-                "clustering_dbscan2",
             ]:
                 result_img = processor.create_cluster_map(
                     image_tensor,
@@ -534,9 +526,8 @@ def create_ui(input_dir=None):
                         # "Clustering (Spectral)",
                         # "Clustering (Hierarchical)",
                         "Clustering (DBSCAN)",
-                        "Clustering (DBSCAN2)",
                     ],
-                    value="Clustering (DBSCAN2)",
+                    value="Clustering (DBSCAN)",
                     label="Analysis Mode",
                 )
                 with gr.Row():
@@ -692,17 +683,9 @@ def create_ui(input_dir=None):
 
                 # DBSCAN Settings
                 dbscan_eps_input = gr.Number(
-                    value=0.0,
-                    label="DBSCAN Eps (0 = Auto)",
-                    visible=False,
-                )
-                dbscan_eps_sensitivity_input = gr.Slider(
-                    minimum=1.0,
-                    maximum=10.0,
-                    value=2.0,
-                    step=0.1,
-                    label="DBSCAN Eps Auto-Sensitivity",
-                    info="Multiplier for auto-calculated Eps. Higher is more lenient.",
+                    value=0.5,
+                    label="DBSCAN Eps",
+                    info="Distance threshold. Must be > 0.",
                     visible=False,
                 )
                 dbscan_min_input = gr.Number(
@@ -739,20 +722,15 @@ def create_ui(input_dir=None):
                     is_cluster_h = mode == "Clustering (Hierarchical)"
                     is_cluster_s = mode == "Clustering (Spectral)"
                     is_cluster_d = mode == "Clustering (DBSCAN)"
-                    is_cluster_d2 = mode == "Clustering (DBSCAN2)"
 
                     is_threshold = is_cluster and (metric == "threshold")
-                    is_dbscan_mode = is_cluster_d or is_cluster_d2
-                    # The value from a gr.Number can be None if empty, so handle it.
-                    dbscan_eps_val = 0.0 if dbscan_eps is None else float(dbscan_eps)
-                    is_dbscan_auto_eps = is_dbscan_mode and (dbscan_eps_val == 0.0)
+                    is_dbscan_mode = is_cluster_d
                     is_clustering_any = (
                         is_cluster
                         or is_cluster2
                         or is_cluster_h
                         or is_cluster_s
                         or is_cluster_d
-                        or is_cluster_d2
                     )
 
                     return (
@@ -761,8 +739,7 @@ def create_ui(input_dir=None):
                         gr.update(visible=(is_top_n or is_all)),  # desc
                         gr.update(
                             visible=(is_cluster or is_cluster2 or is_cluster_s)
-                            and not is_cluster_d
-                            and not is_cluster_d2
+                            and not is_dbscan_mode
                         ),  # k (Hidden for Hierarchical)
                         gr.update(visible=is_clustering_any),  # show_scores
                         gr.update(
@@ -771,7 +748,6 @@ def create_ui(input_dir=None):
                         gr.update(visible=is_cluster_h),  # linkage method
                         gr.update(visible=is_threshold),  # threshold_n
                         gr.update(visible=is_dbscan_mode),  # dbscan eps
-                        gr.update(visible=is_dbscan_auto_eps),  # dbscan eps sensitivity
                         gr.update(visible=is_dbscan_mode),  # dbscan min
                     )
 
@@ -788,7 +764,6 @@ def create_ui(input_dir=None):
                         h_method_input,
                         cluster_threshold_n_input,
                         dbscan_eps_input,
-                        dbscan_eps_sensitivity_input,
                         dbscan_min_input,
                     ],
                 )
@@ -807,7 +782,6 @@ def create_ui(input_dir=None):
                             h_method_input,
                             cluster_threshold_n_input,
                             dbscan_eps_input,
-                            dbscan_eps_sensitivity_input,
                             dbscan_min_input,
                         ],
                     )
@@ -826,7 +800,6 @@ def create_ui(input_dir=None):
                         h_method_input,
                         cluster_threshold_n_input,
                         dbscan_eps_input,
-                        dbscan_eps_sensitivity_input,
                         dbscan_min_input,
                     ],
                 )
@@ -925,7 +898,6 @@ def create_ui(input_dir=None):
             h_method_input,
             dbscan_eps_input,
             dbscan_min_input,
-            dbscan_eps_sensitivity_input,
             power_transform_input,
             oklab_multiplier_input,
             oklab_exponent_input,
