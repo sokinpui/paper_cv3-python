@@ -212,6 +212,62 @@ class PatchAnalyzer:
 
         return torch.from_numpy(labels).to(device)
 
+    def _get_k_distances(self, matrix: torch.Tensor, k: int) -> np.ndarray:
+        """
+        Calculates the distance from each point to its k-th nearest neighbor.
+        k: The rank of the nearest neighbor (e.g., k=1 means 2nd neighbor incl. self).
+        Returns: Sorted k-distances (N,) numpy array.
+        """
+        if k < 1:
+            return np.zeros(matrix.shape[0])
+
+        dist_mat = matrix.detach().cpu().numpy()
+        
+        # Sort each row (distances from point i to all other points)
+        # The k-th neighbor (including self at index 0) is at index k.
+        sorted_dists = np.sort(dist_mat, axis=1)
+        
+        # k_distances is the distance to the (k+1)-th nearest neighbor (0-indexed k).
+        k_distances = sorted_dists[:, k]
+        
+        # Sort the k-distances for the elbow plot
+        k_distances.sort()
+        
+        return k_distances
+
+    def _find_dbscan_eps(self, matrix: torch.Tensor, min_samples: int) -> float:
+        """
+        Finds the optimal epsilon for DBSCAN using the Kneedle algorithm heuristic
+        on the k-distance graph (k = min_samples - 1).
+        Heuristic: Maximum distance from the line connecting the first and last point.
+        """
+        N = matrix.shape[0]
+        if N < 2:
+            return 0.0
+            
+        k = max(1, min_samples - 1)
+        k_distances = self._get_k_distances(matrix, k)
+        
+        x_coords = np.arange(N)
+        y_coords = k_distances
+        
+        # Line equation: Ax + By + C = 0. A = y2 - y1, B = x1 - x2, C = -A*x1 - B*y1
+        A = y_coords[-1] - y_coords[0]
+        B = x_coords[0] - x_coords[-1]
+        C = -A * x_coords[0] - B * y_coords[0]
+        
+        denominator = np.sqrt(A**2 + B**2)
+        if np.isclose(denominator, 0.0):
+            return np.median(y_coords) # Flat line, use median
+
+        numerator = np.abs(A * x_coords + B * y_coords + C)
+        distances = numerator / denominator
+
+        # Find the point with the maximum distance (the knee)
+        knee_index = np.argmax(distances)
+        
+        return float(y_coords[knee_index])
+
     def analyze(
         self,
         patches: torch.Tensor,
@@ -245,6 +301,11 @@ class PatchAnalyzer:
         # Optional: Cluster on the distance matrix (rows as features)
         matrix_labels = None
         # Allow k < 2 for hierarchical (auto mode), but require k > 1 for kmeans/spectral
+
+        # Auto-determine eps for DBSCAN if selected and eps <= 0.0
+        if cluster_on_matrix and clustering_algorithm == "dbscan" and eps <= 0.0:
+            eps = self._find_dbscan_eps(matrix, min_samples)
+
         if cluster_on_matrix:
             if clustering_algorithm == "hierarchical":
                 matrix_labels = self._hierarchical(
@@ -253,6 +314,10 @@ class PatchAnalyzer:
             elif clustering_algorithm == "spectral":
                 matrix_labels = self._spectral(matrix, k)
             elif clustering_algorithm == "dbscan":
+                # Guard Clause: eps must be > 0.0 now
+                if eps <= 0.0:
+                    raise ValueError("DBSCAN eps could not be automatically determined or is invalid (<= 0.0).")
+
                 matrix_labels = self._dbscan(matrix, eps, min_samples)
             else:
                 # Default to K-Means if k > 1

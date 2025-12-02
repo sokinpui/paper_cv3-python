@@ -683,9 +683,9 @@ def create_ui(input_dir=None):
 
                 # DBSCAN Settings
                 dbscan_eps_input = gr.Number(
-                    value=0.5,
+                    value=0.0,
                     label="DBSCAN Eps",
-                    info="Distance threshold. Must be > 0.",
+                    info="Distance threshold. Set to 0.0 for auto-detection (K-needle).",
                     visible=False,
                 )
                 dbscan_min_input = gr.Number(
