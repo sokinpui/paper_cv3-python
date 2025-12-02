@@ -132,6 +132,88 @@ def create_click_handler(metric_name):
     return handler
 
 
+def toggle_annotations(state):
+    """
+    Toggles the visibility of annotations on the result images.
+    Redraws the images based on the 'overlay_visible' flag in the state.
+    """
+    if not state or "image_tensor_np" not in state:
+        # Return updates to do nothing if analysis hasn't run
+        return tuple([gr.update()] * len(METRICS_CONFIG) + [state])
+
+    # Toggle visibility state
+    overlay_visible = not state.get("overlay_visible", True)
+    state["overlay_visible"] = overlay_visible
+
+    # --- Prepare for redrawing ---
+    processor = ImageProcessor(device)
+    image_tensor = torch.from_numpy(state["image_tensor_np"]).to(device)
+
+    # Get raw image as displayable numpy array
+    img_tensor_for_display = image_tensor
+    if img_tensor_for_display.dim() == 4:
+        img_tensor_for_display = img_tensor_for_display.squeeze(0)
+    img_np_rgb = img_tensor_for_display.permute(1, 2, 0).cpu().numpy()
+    img_np_rgb = (img_np_rgb * 255).clip(0, 255).astype(np.uint8)
+
+    image_outputs = []
+
+    for name, _ in METRICS_CONFIG:
+        if name not in state:
+            image_outputs.append(gr.update())
+            continue
+
+        if not overlay_visible:
+            # If hiding overlay, just show the raw image
+            image_outputs.append(gr.update(value=img_np_rgb.copy()))
+            continue
+
+        # --- Redraw annotations ---
+        metric_data = state[name]
+        action_mode = metric_data["action_mode"]
+        stats = metric_data["stats"]
+        grid_shape = metric_data["grid_shape"]
+        strides = metric_data["strides"]
+        height, width = metric_data["unit_size"]
+
+        result_img = None
+        if action_mode in [
+            "clustering",
+            "clustering2",
+            "clustering_hierarchical",
+            "clustering_spectral",
+            "clustering_dbscan",
+            "clustering_dbscan2",
+        ]:
+            result_img = processor.create_cluster_map(
+                image_tensor,
+                stats,
+                grid_shape,
+                strides,
+                height,
+                width,
+                show_scores=metric_data["cluster_show_scores"],
+            )
+        elif action_mode == "heatmap":
+            result_img = processor.create_heatmap(
+                image_tensor,
+                stats,
+                grid_shape,
+                strides,
+                height,
+                width,
+                stat_name=metric_data["sort_by"],
+            )
+        else:  # 'top_n' or 'all'
+            result_img = processor.get_annotated_rgb(
+                image_tensor, stats, height, width, grid_shape, strides
+            )
+
+        image_outputs.append(gr.update(value=result_img))
+
+    return tuple(image_outputs + [state])
+
+
 def run_analysis(
     image_path,
     height,
@@ -198,6 +280,10 @@ def run_analysis(
         # 1. Load
         image_tensor = processor.load_image(image_path)
         img_h, img_w = image_tensor.shape[2], image_tensor.shape[3]
+
+        # Store data needed for toggling annotations
+        new_state["image_tensor_np"] = image_tensor.cpu().numpy()
+        new_state["overlay_visible"] = True
 
         # 2. Tile
         patches, grid_shape, strides = processor.extract_patches(
@@ -338,13 +424,17 @@ def run_analysis(
                 f"{cps:,.0f} pairs/sec"
             )
 
-            # Store Data in State
+            # Store Data in State for this metric
             new_state[name] = {
-                "matrix": matrix.detach().cpu().numpy(),  # Store as numpy
+                "matrix": matrix.detach().cpu().numpy(),
                 "grid_shape": grid_shape,
                 "strides": strides,
                 "unit_size": (int(height), int(width)),
                 "img_shape": (img_h, img_w),
+                "stats": stats,
+                "action_mode": action_mode,
+                "cluster_show_scores": cluster_show_scores,
+                "sort_by": sort_by,
             }
 
             # Update specific slots in the output list
@@ -539,6 +629,7 @@ def create_ui(input_dir=None):
                 )
                 with gr.Row():
                     btn_run = gr.Button("🚀 Run Analysis", variant="primary")
+                    btn_toggle_annotations = gr.Button("🎨 Toggle Annotations")
 
                 # Distance Function Selection
                 metric_names = [m[0] for m in METRICS_CONFIG]
@@ -923,6 +1014,12 @@ def create_ui(input_dir=None):
             fn=run_analysis,
             inputs=common_inputs,
             outputs=common_outputs,
+        )
+
+        btn_toggle_annotations.click(
+            fn=toggle_annotations,
+            inputs=[analysis_state],
+            outputs=[m[1] for m in metric_images] + [analysis_state],
         )
 
         # Wire Select/Click Events for Result Images
