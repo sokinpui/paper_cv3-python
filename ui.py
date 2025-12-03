@@ -6,6 +6,7 @@ import gradio as gr
 from config import METRICS_CONFIG
 from event_handlers import (
     create_click_handler,
+    download_all_results,
     run_analysis,
     run_and_plot_k_distance,
     toggle_annotations,
@@ -44,6 +45,9 @@ def create_ui(input_dir=None):
                 with gr.Row():
                     btn_run = gr.Button("🚀 Run Analysis", variant="primary")
                     btn_toggle_annotations = gr.Button("🎨 Toggle Annotations")
+                    btn_download_all = gr.DownloadButton(
+                        "💾 Download All Results", variant="secondary"
+                    )
 
                 # Distance Function Selection
                 metric_names = [m[0] for m in METRICS_CONFIG]
@@ -61,6 +65,14 @@ def create_ui(input_dir=None):
                         step=0.1,
                         label="Oklab Blur Sigma",
                         info="Blurs units before comparison. Higher values ignore fine details (like texture/noise) and focus on larger color regions. 0 = disabled.",
+                    )
+                    oklab_p_norm_input = gr.Slider(
+                        minimum=1.0,
+                        maximum=20.0,
+                        value=2.0,
+                        step=0.5,
+                        label="Norm Degree (P-Value)",
+                        info="2.0=Euclidean. Increase to >2.0 to suppress small distributed noise and highlight sharp deviations.",
                     )
 
                 with gr.Row():
@@ -106,6 +118,23 @@ def create_ui(input_dir=None):
                         label="SSIM K2",
                         info="Controls sensitivity to contrast/structure. Higher = less sensitive.",
                     )
+                    with gr.Row():
+                        ssim_alpha_input = gr.Slider(
+                            minimum=0.05,
+                            maximum=5.0,
+                            value=1.0,
+                            step=0.05,
+                            label="Alpha (Lum Power)",
+                            info="Power applied to Luminance similarity. >1 suppresses small brightness matches.",
+                        )
+                        ssim_beta_input = gr.Slider(
+                            minimum=0.05,
+                            maximum=5.0,
+                            value=1.0,
+                            step=0.05,
+                            label="Beta (Struct Power)",
+                            info="Power applied to Structure similarity. >1 suppresses small texture matches.",
+                        )
 
                 def update_metric_options_visibility(selected_metrics):
                     return gr.update(visible="Oklab" in selected_metrics), gr.update(
@@ -465,6 +494,9 @@ def create_ui(input_dir=None):
                             oklab_w_l,
                             oklab_w_a,
                             oklab_w_b,
+                            oklab_p_norm_input,
+                            ssim_alpha_input,
+                            ssim_beta_input,
                         ],
                         outputs=[score_dist_plot],
                     )
@@ -495,6 +527,9 @@ def create_ui(input_dir=None):
             oklab_w_a,
             oklab_w_b,
             oklab_blur_sigma_input,
+            oklab_p_norm_input,
+            ssim_alpha_input,
+            ssim_beta_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]
@@ -509,6 +544,13 @@ def create_ui(input_dir=None):
             fn=toggle_annotations,
             inputs=[analysis_state],
             outputs=[m[1] for m in metric_images] + [analysis_state],
+        )
+
+        # Wire download button
+        btn_download_all.click(
+            fn=download_all_results,
+            inputs=[analysis_state] + [m[1] for m in metric_images],
+            outputs=btn_download_all,
         )
 
         # Wire Select/Click Events for Result Images

@@ -22,9 +22,17 @@ class MetricStrategy:
 
 
 class SSIMMetric(MetricStrategy):
-    def __init__(self, k1: float = 0.01, k2: float = 0.03):
+    def __init__(
+        self,
+        k1: float = 0.01,
+        k2: float = 0.03,
+        alpha: float = 1.0,
+        beta: float = 1.0,
+    ):
         self.k1 = k1
         self.k2 = k2
+        self.alpha = alpha
+        self.beta = beta
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -66,11 +74,23 @@ class SSIMMetric(MetricStrategy):
         mu_y = mu.unsqueeze(0)
         sigma_x_sq = sigma_sq.unsqueeze(1)
         sigma_y_sq = sigma_sq.unsqueeze(0)
-        term1_num = 2 * mu_x * mu_y + C1
-        term1_den = mu_x**2 + mu_y**2 + C1
-        term2_num = 2 * cov + C2
-        term2_den = sigma_x_sq + sigma_y_sq + C2
-        ssim_matrix = (term1_num * term2_num) / (term1_den * term2_den)
+
+        # Luminance comparison (l)
+        l_num = 2 * mu_x * mu_y + C1
+        l_den = mu_x**2 + mu_y**2 + C1
+        l_term = l_num / l_den
+
+        # Contrast/Structure comparison (cs)
+        cs_num = 2 * cov + C2
+        cs_den = sigma_x_sq + sigma_y_sq + C2
+        cs_term = cs_num / cs_den
+
+        if self.alpha != 1.0:
+            l_term = torch.pow(l_term.clamp(min=0.0), self.alpha)
+        if self.beta != 1.0:
+            cs_term = torch.pow(cs_term.clamp(min=0.0), self.beta)
+
+        ssim_matrix = l_term * cs_term
         return ssim_matrix
 
 
@@ -159,9 +179,15 @@ class CIELabMetric(MetricStrategy):
 
 
 class HumanEyeColorMetric(MetricStrategy):
-    def __init__(self, blur_sigma: float = 0.8, weights: Tuple[float, float, float] = (1.0, 1.0, 1.0)):
+    def __init__(
+        self,
+        blur_sigma: float = 0.8,
+        weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        p_norm: float = 2.0,
+    ):
         self.blur_sigma = blur_sigma
         self.weights = weights
+        self.p_norm = p_norm
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -177,7 +203,9 @@ class HumanEyeColorMetric(MetricStrategy):
         # Allows fine-tuning sensitivity to Lightness vs Color
         if self.weights != (1.0, 1.0, 1.0):
             # Shape (1, 3, 1, 1) to broadcast over N, H, W
-            w_tensor = torch.tensor(self.weights, device=patches.device, dtype=patches.dtype).view(1, 3, 1, 1)
+            w_tensor = torch.tensor(
+                self.weights, device=patches.device, dtype=patches.dtype
+            ).view(1, 3, 1, 1)
             oklab = oklab * w_tensor
 
         # 3. Blur slightly to simulate human visual area integration
@@ -189,9 +217,9 @@ class HumanEyeColorMetric(MetricStrategy):
         else:
             oklab_blurred = oklab
 
-        # 3. Flatten and Compute Euclidean Distance
+        # 3. Flatten and Compute Minkowski Distance (p-norm)
         flat_vec = oklab_blurred.reshape(patches.shape[0], -1)
-        dists = torch.cdist(flat_vec, flat_vec, p=2)
+        dists = torch.cdist(flat_vec, flat_vec, p=self.p_norm)
 
         return dists
 

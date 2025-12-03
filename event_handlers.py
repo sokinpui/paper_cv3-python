@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 import time
 
 import cv2
@@ -7,15 +9,12 @@ import numpy as np
 import torch
 
 from analyzer import PatchAnalyzer
+from clustering import find_dbscan_eps, get_k_distances
 from config import METRICS_CONFIG
 from globals import DEVICE
 from processor import ImageProcessor
-from clustering import get_k_distances, find_dbscan_eps
-from ui_helpers import (
-    _redraw_metric_image,
-    calculate_vector_distance,
-    find_unit_index_from_click,
-)
+from ui_helpers import _redraw_metric_image  # noqa
+from ui_helpers import calculate_vector_distance, find_unit_index_from_click
 
 
 def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
@@ -85,7 +84,7 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     # FIX: stats list is sorted, so stats[idx] is NOT the unit at index idx.
     # We must find the unit with .index == idx
     u = next((s for s in stats if s.index == idx), None)
-    
+
     if u:
         stat_info = f"--- Selected Unit #{idx + 1} ---\n"
         stat_info += f"Cluster ID: {u.cluster_id}\n"
@@ -238,6 +237,9 @@ def run_analysis(
     oklab_w_l,
     oklab_w_a,
     oklab_w_b,
+    oklab_p_norm,
+    ssim_alpha,
+    ssim_beta,
     current_state,
 ):
     """
@@ -327,11 +329,17 @@ def run_analysis(
 
             # Instantiate and Analyze
             if name == "SSIM":
-                metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
+                metric = MetricClass(
+                    k1=float(ssim_k1),
+                    k2=float(ssim_k2),
+                    alpha=float(ssim_alpha),
+                    beta=float(ssim_beta),
+                )
             elif name == "Oklab":
                 metric = MetricClass(
                     blur_sigma=float(oklab_blur_sigma),
-                    weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b))
+                    weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b)),
+                    p_norm=float(oklab_p_norm),
                 )
             else:
                 metric = MetricClass()
@@ -458,6 +466,9 @@ def run_and_plot_k_distance(
     oklab_w_l,
     oklab_w_a,
     oklab_w_b,
+    oklab_p_norm,
+    ssim_alpha,
+    ssim_beta,
 ):
     """
     Performs a dedicated analysis and generates the K-Distance Graph.
@@ -478,11 +489,17 @@ def run_and_plot_k_distance(
         processor = ImageProcessor(DEVICE)
         MetricClass = dict(METRICS_CONFIG)[metric_name]
         if metric_name == "SSIM":
-            metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
+            metric = MetricClass(
+                k1=float(ssim_k1),
+                k2=float(ssim_k2),
+                alpha=float(ssim_alpha),
+                beta=float(ssim_beta),
+            )
         elif metric_name == "Oklab":
             metric = MetricClass(
                 blur_sigma=float(oklab_blur_sigma),
-                weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b))
+                weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b)),
+                p_norm=float(oklab_p_norm),
             )
         else:
             metric = MetricClass()
@@ -493,7 +510,7 @@ def run_and_plot_k_distance(
         patches, grid_shape, _ = processor.extract_patches(
             image_tensor, int(height), int(width), float(overlap)
         )
-        
+
         # 1. Compute Similarity/Distance Matrix (N, N)
         matrix = metric.compute(patches)
 
@@ -508,7 +525,7 @@ def run_and_plot_k_distance(
         # 2. Calculate K-Distances
         k = max(1, int(min_samples) - 1)
         k_distances = get_k_distances(matrix, k)
-        
+
         # 3. Auto-Determine eps if user wants it (for insight)
         calculated_eps = float(eps)
         if calculated_eps <= 0.0:
@@ -521,19 +538,19 @@ def run_and_plot_k_distance(
         # Plotting logic
         fig, ax = plt.subplots(figsize=(8, 4))
         x_coords = np.arange(N)
-        
+
         # The Curve: Blue line
-        ax.plot(x_coords, k_distances, label=f'{k}-Distance', color='blue')
-        
+        ax.plot(x_coords, k_distances, label=f"{k}-Distance", color="blue")
+
         # The Threshold: Red dashed line
         eps_to_plot = calculated_eps if calculated_eps > 0.0 else float(eps)
 
         if eps_to_plot > 0.0:
             ax.axhline(
                 y=eps_to_plot,
-                color='red',
-                linestyle='--',
-                label=f'Eps Threshold ({eps_to_plot:.4f})'
+                color="red",
+                linestyle="--",
+                label=f"Eps Threshold ({eps_to_plot:.4f})",
             )
 
         ax.set_title(f"K-Distance Graph (k={k}) for '{metric_name}'")
@@ -551,3 +568,39 @@ def run_and_plot_k_distance(
 
         traceback.print_exc()
         return None
+
+
+def download_all_results(state, *images):
+    """
+    Combines all visible result images into a single downloadable image.
+    """
+    from visualizer import create_composite_image
+
+    if not state or "image_tensor_np" not in state:
+        return None
+
+    # Filter out metrics that weren't run or are not visible
+    image_data = []
+    for i, (name, _) in enumerate(METRICS_CONFIG):
+        if name in state and images[i] is not None:
+            # The image from gradio is already a numpy array
+            image_data.append((name, images[i]))
+
+    if not image_data:
+        return None  # No images to download
+
+    # Create the composite image
+    composite_img = create_composite_image(image_data)
+
+    # Ensure tmp directory exists
+    if not os.path.exists("tmp"):
+        os.makedirs("tmp")
+
+    # Save to a temporary file
+    _, temp_path = tempfile.mkstemp(suffix=".png", dir="tmp")
+
+    # cv2 expects BGR for imwrite
+    composite_img_bgr = cv2.cvtColor(composite_img, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(temp_path, composite_img_bgr)
+
+    return gr.update(value=temp_path)
