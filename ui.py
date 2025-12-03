@@ -53,6 +53,16 @@ def create_ui(input_dir=None):
                     label="Distance Functions",
                 )
 
+                with gr.Group(visible=True) as oklab_options:
+                    oklab_blur_sigma_input = gr.Slider(
+                        minimum=0.0,
+                        maximum=3.0,
+                        value=0.8,
+                        step=0.1,
+                        label="Oklab Blur Sigma",
+                        info="Strength of Gaussian blur to reduce noise. 0 = disabled.",
+                    )
+
                 with gr.Group(visible=False) as ssim_options:
                     ssim_k1_input = gr.Slider(
                         minimum=0.001,
@@ -71,13 +81,15 @@ def create_ui(input_dir=None):
                         info="Controls sensitivity to contrast/structure. Higher = less sensitive.",
                     )
 
-                def update_ssim_visibility(selected_metrics):
-                    return gr.update(visible="SSIM" in selected_metrics)
+                def update_metric_options_visibility(selected_metrics):
+                    return gr.update(visible="Oklab" in selected_metrics), gr.update(
+                        visible="SSIM" in selected_metrics
+                    )
 
                 distance_funcs_input.change(
-                    fn=update_ssim_visibility,
+                    fn=update_metric_options_visibility,
                     inputs=distance_funcs_input,
-                    outputs=ssim_options,
+                    outputs=[oklab_options, ssim_options],
                 )
 
                 gr.Markdown("### Settings")
@@ -410,6 +422,7 @@ def create_ui(input_dir=None):
                             plot_eps_input,
                             ssim_k1_input,
                             ssim_k2_input,
+                            oklab_blur_sigma_input,
                         ],
                         outputs=[score_dist_plot],
                     )
@@ -435,6 +448,7 @@ def create_ui(input_dir=None):
             power_transform_input,
             ssim_k1_input,
             ssim_k2_input,
+            oklab_blur_sigma_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]

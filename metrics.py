@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from torchvision.transforms import GaussianBlur
 
 
 class MetricStrategy:
@@ -156,6 +157,9 @@ class CIELabMetric(MetricStrategy):
 
 
 class HumanEyeColorMetric(MetricStrategy):
+    def __init__(self, blur_sigma: float = 0.8):
+        self.blur_sigma = blur_sigma
+
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
         Uses Oklab color space (perceptually uniform) + Gaussian Blur.
@@ -166,23 +170,19 @@ class HumanEyeColorMetric(MetricStrategy):
         # 1. Convert to Oklab
         oklab = self._rgb_to_oklab(patches)  # (N, 3, H, W)
 
-        # 2. Blur slightly (3x3 Gaussian) to simulate human visual area integration
-        # This reduces false positives from single-pixel noise or slight texture shifts.
-        kernel = (
-            torch.tensor(
-                [[1, 2, 1], [2, 4, 2], [1, 2, 1]], device=patches.device
-            ).float()
-            / 16.0
-        )
-        kernel = kernel.view(1, 1, 3, 3).repeat(3, 1, 1, 1)
-        # groups=3 applies kernel to each channel independently
-        oklab_blurred = F.conv2d(oklab, kernel, padding=1, groups=3)
+        # 2. Blur slightly to simulate human visual area integration
+        if self.blur_sigma > 0:
+            # Kernel size must be odd. A common choice is 2*ceil(3*sigma)+1
+            kernel_size = 2 * int(3.0 * self.blur_sigma + 0.5) + 1
+            blur = GaussianBlur(kernel_size, sigma=self.blur_sigma)
+            oklab_blurred = blur(oklab)
+        else:
+            oklab_blurred = oklab
 
         # 3. Flatten and Compute Euclidean Distance
         flat_vec = oklab_blurred.reshape(patches.shape[0], -1)
         dists = torch.cdist(flat_vec, flat_vec, p=2)
 
-        H, W = patches.shape[2], patches.shape[3]
         return dists
 
     def get_features(self, patches: torch.Tensor) -> torch.Tensor:

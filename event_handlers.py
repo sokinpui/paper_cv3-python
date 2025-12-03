@@ -217,6 +217,7 @@ def run_analysis(
     power_transform_degree,
     ssim_k1,
     ssim_k2,
+    oklab_blur_sigma,
     current_state,
 ):
     """
@@ -307,6 +308,8 @@ def run_analysis(
             # Instantiate and Analyze
             if name == "SSIM":
                 metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
+            elif name == "Oklab":
+                metric = MetricClass(blur_sigma=float(oklab_blur_sigma))
             else:
                 metric = MetricClass()
 
@@ -427,6 +430,7 @@ def run_and_plot_k_distance(
     eps,
     ssim_k1,
     ssim_k2,
+    oklab_blur_sigma,
 ):
     """
     Performs a dedicated analysis and generates the K-Distance Graph.
@@ -448,6 +452,8 @@ def run_and_plot_k_distance(
         MetricClass = dict(METRICS_CONFIG)[metric_name]
         if metric_name == "SSIM":
             metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
+        elif metric_name == "Oklab":
+            metric = MetricClass(blur_sigma=float(oklab_blur_sigma))
         else:
             metric = MetricClass()
         analyzer = PatchAnalyzer(metric)
