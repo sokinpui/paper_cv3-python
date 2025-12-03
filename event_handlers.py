@@ -39,6 +39,7 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
         )
 
     data = state[metric_name]
+    stats = data.get("stats", [])
     idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
 
     # If click is invalid, do nothing.
@@ -81,9 +82,11 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     distance_result = calculate_vector_distance(new_vec_a, new_vec_b)
 
     # Prepend Clicked Unit Stats (NN Dist, etc.)
-    stats = data.get("stats")
-    if stats and 0 <= idx < len(stats):
-        u = stats[idx]
+    # FIX: stats list is sorted, so stats[idx] is NOT the unit at index idx.
+    # We must find the unit with .index == idx
+    u = next((s for s in stats if s.index == idx), None)
+    
+    if u:
         stat_info = f"--- Selected Unit #{idx + 1} ---\n"
         stat_info += f"Cluster ID: {u.cluster_id}\n"
         if hasattr(u, "nn_dist"):
