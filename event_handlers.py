@@ -64,12 +64,31 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     vector = np.nan_to_num(vector, nan=0.0)
     vec_str = ", ".join([f"{x:.4f}" for x in vector])
 
+    # Determine which vector to populate and store indices
     if not vec_a:
         new_vec_a = vec_str
+        data["vec_a_idx"] = idx
+        if "vec_b_idx" in data:
+            del data["vec_b_idx"]
     elif not vec_b:
         new_vec_b = vec_str
+        data["vec_b_idx"] = idx
     else:
         new_vec_b = vec_str  # Overwrite B if A and B are full
+        data["vec_b_idx"] = idx
+
+    # Generate result string
+    distance_result = calculate_vector_distance(new_vec_a, new_vec_b)
+
+    # Add pairwise distance if available from click selections
+    idx_a = data.get("vec_a_idx")
+    idx_b = data.get("vec_b_idx")
+
+    if idx_a is not None and idx_b is not None:
+        pairwise_dist = matrix[idx_a, idx_b]
+        dist_info = f"\n\n--- Pairwise Distance (from matrix) ---\n"
+        dist_info += f"Distance(unit {idx_a}, unit {idx_b}): {pairwise_dist:.6f}"
+        distance_result += dist_info
 
     # 3. Unit Inspector Logic (Copied from original, unchanged)
     gallery_images = []
@@ -113,7 +132,7 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     return (
         new_vec_a,
         new_vec_b,
-        calculate_vector_distance(new_vec_a, new_vec_b),
+        distance_result,
         gallery_update,
         image_update,
     )
