@@ -223,6 +223,13 @@ def create_ui(input_dir=None):
                     visible=False,
                 )
 
+                cluster_label_mode = gr.Dropdown(
+                    choices=["1-NN Distance", "k-Distance", "Mean Score", "Max Score"],
+                    value="1-NN Distance",
+                    label="Map Label Value",
+                    visible=False,
+                )
+
                 cluster_metric_input = gr.Dropdown(
                     choices=["mean", "std_dev", "threshold"],
                     value="mean",
@@ -273,6 +280,9 @@ def create_ui(input_dir=None):
                         ),  # k (Hidden for Hierarchical)
                         gr.update(visible=is_clustering_any),  # show_scores
                         gr.update(
+                            visible=is_clustering_any
+                        ),  # cluster_label_mode (show whenever show_scores is relevant)
+                        gr.update(
                             visible=is_cluster
                         ),  # cluster_metric (only for stats clustering)
                         gr.update(visible=is_cluster_h),  # linkage method
@@ -290,6 +300,7 @@ def create_ui(input_dir=None):
                         desc_input,
                         k_input,
                         cluster_show_scores,
+                        cluster_label_mode,
                         cluster_metric_input,
                         h_method_input,
                         cluster_threshold_n_input,
@@ -308,6 +319,7 @@ def create_ui(input_dir=None):
                             desc_input,
                             k_input,
                             cluster_show_scores,
+                            cluster_label_mode,
                             cluster_metric_input,
                             h_method_input,
                             cluster_threshold_n_input,
@@ -326,6 +338,7 @@ def create_ui(input_dir=None):
                         desc_input,
                         k_input,
                         cluster_show_scores,
+                        cluster_label_mode,
                         cluster_metric_input,
                         h_method_input,
                         cluster_threshold_n_input,
@@ -439,6 +452,7 @@ def create_ui(input_dir=None):
             mode_input,
             k_input,
             cluster_show_scores,
+            cluster_label_mode,
             cluster_metric_input,
             cluster_threshold_n_input,
             distance_funcs_input,

@@ -64,6 +64,7 @@ def _redraw_metric_image(
     grid_shape = metric_data["grid_shape"]
     strides = metric_data["strides"]
     height, width = metric_data["unit_size"]
+    label_mode = metric_data.get("cluster_label_mode", "1-NN Distance")
 
     if action_mode in [
         "clustering",
@@ -82,6 +83,7 @@ def _redraw_metric_image(
             width,
             show_scores=metric_data["cluster_show_scores"],
             selected_unit_index=selected_unit_idx,
+            label_mode=label_mode,
         )
     elif action_mode == "heatmap":
         return visualizer.create_heatmap(

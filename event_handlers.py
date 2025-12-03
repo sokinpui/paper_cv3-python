@@ -226,6 +226,7 @@ def run_analysis(
     cluster_show_scores,
     cluster_metric,
     cluster_threshold_n,
+    cluster_label_mode,
     selected_distance_functions,
     hierarchical_method,
     dbscan_eps,
@@ -386,6 +387,7 @@ def run_analysis(
                 "stats": stats,
                 "action_mode": action_mode,
                 "cluster_show_scores": cluster_show_scores,
+                "cluster_label_mode": cluster_label_mode,
                 "sort_by": sort_by,
                 "selected_unit_idx": -1,
             }

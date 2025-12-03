@@ -232,6 +232,7 @@ def create_cluster_map(
     unit_w: int,
     show_scores: bool = False,
     selected_unit_index: int = -1,
+    label_mode: str = "1-NN Distance",
 ) -> np.ndarray:
     """
     Creates a visualization where each unit is colored by its cluster_id.
@@ -298,7 +299,15 @@ def create_cluster_map(
             y = u.row * stride_h if u.row < rows - 1 else H - unit_h
             x = u.col * stride_w if u.col < cols - 1 else W - unit_w
 
-            text = f"{u.nn_dist:.3f}"
+            val = u.nn_dist
+            if label_mode == "k-Distance":
+                val = u.neighbor_dist
+            elif label_mode == "Mean Score":
+                val = u.mean
+            elif label_mode == "Max Score":
+                val = u.max_score
+
+            text = f"{val:.3f}"
             font_scale = max(0.2, 0.4 * (min(unit_w, unit_h) / 50.0))
             thickness = max(1, int(min(unit_w, unit_h) / 50.0))
 
