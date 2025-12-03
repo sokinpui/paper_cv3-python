@@ -24,7 +24,13 @@ Run the interactive web interface to load an image, adjust unit size, select a m
 
 ```bash
 # Run the UI, optionally pointing to a directory for image examples
-python app.py -i ./sample_images/
+python app.py -i .path
+```
+
+or
+
+```bash
+python app.py --reload -i <path>
 ```
 
 Access the UI at `http://localhost:7860`.
@@ -46,12 +52,12 @@ python main.py <image_path> \
 
 ### Example Arguments
 
-| Argument | Description | Default |
-|---|---|---|
-| `image_path` | Path to the input image. | - |
-| `--height` | Height of the analysis unit. | **Required** |
-| `--width` | Width of the analysis unit. | **Required** |
-| `--metric` | Comparison metric (e.g., `human_eye`, `grad_color`, `ssim`). | `human_eye` |
-| `--sort_by` | Statistic to rank units (e.g., `mean`, `l2_norm`). | `mean` |
-| `--top_n` | Number of top units to report. | 5 |
-| `--output` | Path to save the annotated image. | - |
+| Argument     | Description                                                  | Default      |
+| ------------ | ------------------------------------------------------------ | ------------ |
+| `image_path` | Path to the input image.                                     | -            |
+| `--height`   | Height of the analysis unit.                                 | **Required** |
+| `--width`    | Width of the analysis unit.                                  | **Required** |
+| `--metric`   | Comparison metric (e.g., `human_eye`, `grad_color`, `ssim`). | `human_eye`  |
+| `--sort_by`  | Statistic to rank units (e.g., `mean`, `l2_norm`).           | `mean`       |
+| `--top_n`    | Number of top units to report.                               | 5            |
+| `--output`   | Path to save the annotated image.                            | -            |
