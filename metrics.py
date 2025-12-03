@@ -18,6 +18,57 @@ class MetricStrategy:
         return patches.reshape(patches.shape[0], -1)
 
 
+class SSIMMetric(MetricStrategy):
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes pairwise SSIM and converts to distance (1 - SSIM).
+        High score = different.
+        """
+        N, C, H, W = patches.shape
+        if C == 1:
+            ssim_matrix = self._compute_ssim_matrix(patches)
+        else:
+            channel_ssims = []
+            for i in range(C):
+                channel_ssims.append(
+                    self._compute_ssim_matrix(patches[:, i : i + 1, :, :])
+                )
+            ssim_matrix = torch.stack(channel_ssims).mean(dim=0)
+
+        return 1.0 - ssim_matrix
+
+    def _compute_ssim_matrix(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes SSIM matrix for a single channel.
+        patches: (N, 1, H, W)
+        """
+        N, _, H, W = patches.shape
+
+        K1 = 0.01
+        K2 = 0.03
+        L = 1.0
+        C1 = (K1 * L) ** 2
+        C2 = (K2 * L) ** 2
+
+        mu = patches.mean(dim=(2, 3)).squeeze()
+        sigma_sq = patches.var(dim=(2, 3), unbiased=False).squeeze()
+
+        patches_centered = patches - mu.view(N, 1, 1, 1)
+        patches_centered_flat = patches_centered.view(N, H * W)
+        cov = (patches_centered_flat @ patches_centered_flat.T) / (H * W)
+
+        mu_x = mu.unsqueeze(1)
+        mu_y = mu.unsqueeze(0)
+        sigma_x_sq = sigma_sq.unsqueeze(1)
+        sigma_y_sq = sigma_sq.unsqueeze(0)
+        term1_num = 2 * mu_x * mu_y + C1
+        term1_den = mu_x**2 + mu_y**2 + C1
+        term2_num = 2 * cov + C2
+        term2_den = sigma_x_sq + sigma_y_sq + C2
+        ssim_matrix = (term1_num * term2_num) / (term1_den * term2_den)
+        return ssim_matrix
+
+
 class CIELabMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -100,55 +151,6 @@ class CIELabMetric(MetricStrategy):
         b_chan = 200 * (y - z)
 
         return torch.stack([l_chan, a_chan, b_chan], dim=1)
-
-
-class GradientColorMetric(CIELabMetric):
-    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
-        """
-        Features:
-        1. Texture Strength (Gradient Magnitude on L) - Captures lines/edges.
-        2. Chrominance (Lab 'a' & 'b' Means) - Captures color shifts.
-        3. Roughness (Luminance Std Dev) - Captures noise/texture variance.
-        """
-        # 1. Convert to Lab
-        lab = self._rgb_to_lab(patches)
-        l_chan = lab[:, 0:1, :, :]
-        a_chan = lab[:, 1:2, :, :]
-        b_chan = lab[:, 2:3, :, :]
-
-        # 2. Texture Strength (Gradient Magnitude on L)
-        kx = (
-            torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], device=patches.device)
-            .view(1, 1, 3, 3)
-            .float()
-        )
-        ky = (
-            torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], device=patches.device)
-            .view(1, 1, 3, 3)
-            .float()
-        )
-
-        gx = F.conv2d(l_chan, kx, padding=1)
-        gy = F.conv2d(l_chan, ky, padding=1)
-        grad_mag = torch.sqrt(gx**2 + gy**2 + 1e-8)
-
-        feat_texture = grad_mag.mean(dim=(2, 3))  # (N, 1)
-
-        # 3. Roughness (Luminance Std Dev)
-        feat_roughness = l_chan.std(dim=(2, 3))  # (N, 1)
-
-        # 4. Chrominance (Mean a, Mean b)
-        feat_a = a_chan.mean(dim=(2, 3))  # (N, 1)
-        feat_b = b_chan.mean(dim=(2, 3))  # (N, 1)
-
-        # Concatenate: (N, 4)
-        features = torch.cat([feat_texture, feat_roughness, feat_a, feat_b], dim=1)
-
-        # 5. Z-Score Normalization
-        f_mean = features.mean(dim=0, keepdim=True)
-        f_std = features.std(dim=0, keepdim=True) + 1e-8
-
-        return (features - f_mean) / f_std
 
 
 class HumanEyeColorMetric(MetricStrategy):
