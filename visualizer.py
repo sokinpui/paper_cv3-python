@@ -298,7 +298,7 @@ def create_cluster_map(
             y = u.row * stride_h if u.row < rows - 1 else H - unit_h
             x = u.col * stride_w if u.col < cols - 1 else W - unit_w
 
-            text = f"{u.l2_norm:.1f}"
+            text = f"{u.nn_dist:.3f}"
             font_scale = max(0.2, 0.4 * (min(unit_w, unit_h) / 50.0))
             thickness = max(1, int(min(unit_w, unit_h) / 50.0))
 

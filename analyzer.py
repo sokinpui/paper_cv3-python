@@ -18,6 +18,8 @@ class UnitStats:
     max_score: float
     cluster_id: int = -1
     l2_norm: float = 0.0
+    neighbor_dist: float = 0.0
+    nn_dist: float = 0.0
 
     def to_dict(self):
         return self.__dict__
@@ -57,6 +59,16 @@ class PatchAnalyzer:
         # Optional: Apply Power Transformation to exaggerate/flatten distances
         if power_transform_degree != 1.0:
             matrix = torch.pow(matrix.clamp(min=0.0), power_transform_degree)
+
+        # Calculate k-Distance for debugging DBSCAN (Distance to the (min_samples-1)-th neighbor)
+        # Index 0 is self, so index (min_samples-1) corresponds to the k-th neighbor count.
+        k_idx = max(1, min_samples - 1)
+        sorted_dists, _ = torch.sort(matrix, dim=1)
+        # k-distance (for global density/debug)
+        k_distances = sorted_dists[:, min(k_idx, N - 1)]
+        # 1-NN distance (distance to closest neighbor, for connectivity check)
+        # Index 0 is self (0.0), Index 1 is the nearest neighbor
+        nn_distances = sorted_dists[:, 1] if N > 1 else torch.zeros(N, device=matrix.device)
 
         # Optional: Cluster on the distance matrix (rows as features)
         matrix_labels = None
@@ -153,6 +165,8 @@ class PatchAnalyzer:
                 max_score=maxs[i].item(),
                 cluster_id=matrix_labels[i].item() if matrix_labels is not None else -1,
                 l2_norm=l2_norms[i].item(),
+                neighbor_dist=k_distances[i].item(),
+                nn_dist=nn_distances[i].item(),
             )
             results.append(stats)
 

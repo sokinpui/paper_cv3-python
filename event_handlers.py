@@ -80,6 +80,19 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     # Generate result string
     distance_result = calculate_vector_distance(new_vec_a, new_vec_b)
 
+    # Prepend Clicked Unit Stats (NN Dist, etc.)
+    stats = data.get("stats")
+    if stats and 0 <= idx < len(stats):
+        u = stats[idx]
+        stat_info = f"--- Selected Unit #{idx + 1} ---\n"
+        stat_info += f"Cluster ID: {u.cluster_id}\n"
+        if hasattr(u, "nn_dist"):
+            stat_info += f"1-NN Dist:  {u.nn_dist:.4f}\n"
+        if hasattr(u, "neighbor_dist"):
+            stat_info += f"k-Dist:     {u.neighbor_dist:.4f}\n"
+        stat_info += f"Mean:       {u.mean:.4f}\n\n"
+        distance_result = stat_info + distance_result
+
     # Add pairwise distance if available from click selections
     idx_a = data.get("vec_a_idx")
     idx_b = data.get("vec_b_idx")

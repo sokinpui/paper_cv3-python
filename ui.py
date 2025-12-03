@@ -237,7 +237,7 @@ def create_ui(input_dir=None):
                 )
 
                 cluster_show_scores = gr.Checkbox(
-                    value=False, label="Show Unit's L2 norm", visible=True
+                    value=False, label="Show Nearest Neighbor Dist (1-NN)", visible=True
                 )
 
                 # Visibility Logic
