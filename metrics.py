@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 import torch.nn.functional as F
 from torchvision.transforms import GaussianBlur
@@ -157,8 +159,9 @@ class CIELabMetric(MetricStrategy):
 
 
 class HumanEyeColorMetric(MetricStrategy):
-    def __init__(self, blur_sigma: float = 0.8):
+    def __init__(self, blur_sigma: float = 0.8, weights: Tuple[float, float, float] = (1.0, 1.0, 1.0)):
         self.blur_sigma = blur_sigma
+        self.weights = weights
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -170,7 +173,14 @@ class HumanEyeColorMetric(MetricStrategy):
         # 1. Convert to Oklab
         oklab = self._rgb_to_oklab(patches)  # (N, 3, H, W)
 
-        # 2. Blur slightly to simulate human visual area integration
+        # 2. Apply Channel Weights (L, a, b)
+        # Allows fine-tuning sensitivity to Lightness vs Color
+        if self.weights != (1.0, 1.0, 1.0):
+            # Shape (1, 3, 1, 1) to broadcast over N, H, W
+            w_tensor = torch.tensor(self.weights, device=patches.device, dtype=patches.dtype).view(1, 3, 1, 1)
+            oklab = oklab * w_tensor
+
+        # 3. Blur slightly to simulate human visual area integration
         if self.blur_sigma > 0:
             # Kernel size must be odd. A common choice is 2*ceil(3*sigma)+1
             kernel_size = 2 * int(3.0 * self.blur_sigma + 0.5) + 1

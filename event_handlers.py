@@ -235,6 +235,9 @@ def run_analysis(
     ssim_k1,
     ssim_k2,
     oklab_blur_sigma,
+    oklab_w_l,
+    oklab_w_a,
+    oklab_w_b,
     current_state,
 ):
     """
@@ -326,7 +329,10 @@ def run_analysis(
             if name == "SSIM":
                 metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
             elif name == "Oklab":
-                metric = MetricClass(blur_sigma=float(oklab_blur_sigma))
+                metric = MetricClass(
+                    blur_sigma=float(oklab_blur_sigma),
+                    weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b))
+                )
             else:
                 metric = MetricClass()
 
@@ -449,6 +455,9 @@ def run_and_plot_k_distance(
     ssim_k1,
     ssim_k2,
     oklab_blur_sigma,
+    oklab_w_l,
+    oklab_w_a,
+    oklab_w_b,
 ):
     """
     Performs a dedicated analysis and generates the K-Distance Graph.
@@ -471,7 +480,10 @@ def run_and_plot_k_distance(
         if metric_name == "SSIM":
             metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
         elif metric_name == "Oklab":
-            metric = MetricClass(blur_sigma=float(oklab_blur_sigma))
+            metric = MetricClass(
+                blur_sigma=float(oklab_blur_sigma),
+                weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b))
+            )
         else:
             metric = MetricClass()
         analyzer = PatchAnalyzer(metric)

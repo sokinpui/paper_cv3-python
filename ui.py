@@ -63,6 +63,32 @@ def create_ui(input_dir=None):
                         info="Strength of Gaussian blur to reduce noise. 0 = disabled.",
                     )
 
+                with gr.Row():
+                    oklab_w_l = gr.Slider(
+                        minimum=0.0,
+                        maximum=5.0,
+                        value=1.0,
+                        step=0.1,
+                        label="L Weight (Lightness)",
+                        info="Sensitivity to brightness changes.",
+                    )
+                    oklab_w_a = gr.Slider(
+                        minimum=0.0,
+                        maximum=5.0,
+                        value=1.0,
+                        step=0.1,
+                        label="a Weight (Green-Red)",
+                        info="Sensitivity to Green/Red shifts.",
+                    )
+                    oklab_w_b = gr.Slider(
+                        minimum=0.0,
+                        maximum=5.0,
+                        value=1.0,
+                        step=0.1,
+                        label="b Weight (Blue-Yellow)",
+                        info="Sensitivity to Blue/Yellow shifts.",
+                    )
+
                 with gr.Group(visible=False) as ssim_options:
                     ssim_k1_input = gr.Slider(
                         minimum=0.001,
@@ -244,7 +270,7 @@ def create_ui(input_dir=None):
                 )
 
                 cluster_show_scores = gr.Checkbox(
-                    value=False, label="Show Nearest Neighbor Dist (1-NN)", visible=True
+                    value=False, label="Show Units' Stat", visible=True
                 )
 
                 # Visibility Logic
@@ -436,6 +462,9 @@ def create_ui(input_dir=None):
                             ssim_k1_input,
                             ssim_k2_input,
                             oklab_blur_sigma_input,
+                            oklab_w_l,
+                            oklab_w_a,
+                            oklab_w_b,
                         ],
                         outputs=[score_dist_plot],
                     )
@@ -462,6 +491,9 @@ def create_ui(input_dir=None):
             power_transform_input,
             ssim_k1_input,
             ssim_k2_input,
+            oklab_w_l,
+            oklab_w_a,
+            oklab_w_b,
             oklab_blur_sigma_input,
             analysis_state,
         ]
