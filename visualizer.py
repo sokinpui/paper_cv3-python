@@ -295,9 +295,6 @@ def create_cluster_map(
     # Draw scores on top of the blended image if requested
     if show_scores:
         for u in units:
-            if u.cluster_id < 0:
-                continue
-
             y = u.row * stride_h if u.row < rows - 1 else H - unit_h
             x = u.col * stride_w if u.col < cols - 1 else W - unit_w
 
