@@ -60,7 +60,7 @@ def create_ui(input_dir=None):
                         value=0.8,
                         step=0.1,
                         label="Oklab Blur Sigma",
-                        info="Strength of Gaussian blur to reduce noise. 0 = disabled.",
+                        info="Blurs units before comparison. Higher values ignore fine details (like texture/noise) and focus on larger color regions. 0 = disabled.",
                     )
 
                 with gr.Row():
@@ -70,7 +70,7 @@ def create_ui(input_dir=None):
                         value=1.0,
                         step=0.1,
                         label="L Weight (Lightness)",
-                        info="Sensitivity to brightness changes.",
+                        info="Sensitivity to brightness changes. Higher = more sensitive.",
                     )
                     oklab_w_a = gr.Slider(
                         minimum=0.0,
@@ -78,7 +78,7 @@ def create_ui(input_dir=None):
                         value=1.0,
                         step=0.1,
                         label="a Weight (Green-Red)",
-                        info="Sensitivity to Green/Red shifts.",
+                        info="Sensitivity to Green/Red shifts. Higher = more sensitive.",
                     )
                     oklab_w_b = gr.Slider(
                         minimum=0.0,
@@ -86,7 +86,7 @@ def create_ui(input_dir=None):
                         value=1.0,
                         step=0.1,
                         label="b Weight (Blue-Yellow)",
-                        info="Sensitivity to Blue/Yellow shifts.",
+                        info="Sensitivity to Blue/Yellow shifts. Higher = more sensitive.",
                     )
 
                 with gr.Group(visible=False) as ssim_options:
