@@ -53,6 +53,33 @@ def create_ui(input_dir=None):
                     label="Distance Functions",
                 )
 
+                with gr.Group(visible=False) as ssim_options:
+                    ssim_k1_input = gr.Slider(
+                        minimum=0.001,
+                        maximum=0.1,
+                        value=0.01,
+                        step=0.005,
+                        label="SSIM K1",
+                        info="Controls sensitivity to brightness. Higher = less sensitive.",
+                    )
+                    ssim_k2_input = gr.Slider(
+                        minimum=0.001,
+                        maximum=0.10,
+                        value=0.03,
+                        step=0.005,
+                        label="SSIM K2",
+                        info="Controls sensitivity to contrast/structure. Higher = less sensitive.",
+                    )
+
+                def update_ssim_visibility(selected_metrics):
+                    return gr.update(visible="SSIM" in selected_metrics)
+
+                distance_funcs_input.change(
+                    fn=update_ssim_visibility,
+                    inputs=distance_funcs_input,
+                    outputs=ssim_options,
+                )
+
                 gr.Markdown("### Settings")
 
                 # Input Controls
@@ -381,6 +408,8 @@ def create_ui(input_dir=None):
                             power_transform_input,
                             plot_min_samples,
                             plot_eps_input,
+                            ssim_k1_input,
+                            ssim_k2_input,
                         ],
                         outputs=[score_dist_plot],
                     )
@@ -404,6 +433,8 @@ def create_ui(input_dir=None):
             dbscan_eps_input,
             dbscan_min_input,
             power_transform_input,
+            ssim_k1_input,
+            ssim_k2_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]

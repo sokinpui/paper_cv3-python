@@ -19,6 +19,10 @@ class MetricStrategy:
 
 
 class SSIMMetric(MetricStrategy):
+    def __init__(self, k1: float = 0.01, k2: float = 0.03):
+        self.k1 = k1
+        self.k2 = k2
+
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
         Computes pairwise SSIM and converts to distance (1 - SSIM).
@@ -44,11 +48,9 @@ class SSIMMetric(MetricStrategy):
         """
         N, _, H, W = patches.shape
 
-        K1 = 0.01
-        K2 = 0.03
         L = 1.0
-        C1 = (K1 * L) ** 2
-        C2 = (K2 * L) ** 2
+        C1 = (self.k1 * L) ** 2
+        C2 = (self.k2 * L) ** 2
 
         mu = patches.mean(dim=(2, 3)).squeeze()
         sigma_sq = patches.var(dim=(2, 3), unbiased=False).squeeze()

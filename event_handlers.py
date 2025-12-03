@@ -215,6 +215,8 @@ def run_analysis(
     dbscan_eps,
     dbscan_min_samples,
     power_transform_degree,
+    ssim_k1,
+    ssim_k2,
     current_state,
 ):
     """
@@ -303,8 +305,8 @@ def run_analysis(
             t_metric_start = time.time()
 
             # Instantiate and Analyze
-            if name == "Oklab":
-                metric = MetricClass()
+            if name == "SSIM":
+                metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
             else:
                 metric = MetricClass()
 
@@ -423,6 +425,8 @@ def run_and_plot_k_distance(
     power_transform_degree,
     min_samples,
     eps,
+    ssim_k1,
+    ssim_k2,
 ):
     """
     Performs a dedicated analysis and generates the K-Distance Graph.
@@ -442,8 +446,8 @@ def run_and_plot_k_distance(
         # Setup Components
         processor = ImageProcessor(DEVICE)
         MetricClass = dict(METRICS_CONFIG)[metric_name]
-        if metric_name == "Oklab":
-            metric = MetricClass()
+        if metric_name == "SSIM":
+            metric = MetricClass(k1=float(ssim_k1), k2=float(ssim_k2))
         else:
             metric = MetricClass()
         analyzer = PatchAnalyzer(metric)
