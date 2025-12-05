@@ -710,20 +710,20 @@ def run_and_plot_stats(
         stats.sort(key=lambda s: s.index)
 
         # Extract data for plotting
-        indices = [s.index for s in stats]
-        nn_dists = [s.nn_dist for s in stats]
-        k_dists = [s.neighbor_dist for s in stats]
-        mean_scores = [s.mean for s in stats]
-        max_scores = [s.max_score for s in stats]
+        indices = np.array([s.index for s in stats])
+        nn_dists = np.array([s.nn_dist for s in stats])
+        k_dists = np.array([s.neighbor_dist for s in stats])
+        mean_scores = np.array([s.mean for s in stats])
+        max_scores = np.array([s.max_score for s in stats])
 
         # Plotting logic
-        fig, axs = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
+        fig, axs = plt.subplots(5, 1, figsize=(10, 15), sharex=True)
         fig.suptitle(f"Unit Statistics for '{metric_name}' (Z-Order)", fontsize=16)
 
         axs[0].plot(indices, nn_dists, label="1-NN Distance", color="blue")
         axs[0].set_ylabel("1-NN Distance")
         axs[0].grid(True, linestyle="--", alpha=0.6)
-        axs[0].legend()
+        axs[0].legend(loc="upper left")
 
         k_val = max(1, int(min_samples) - 1)
         axs[1].plot(
@@ -731,18 +731,59 @@ def run_and_plot_stats(
         )
         axs[1].set_ylabel("k-Distance")
         axs[1].grid(True, linestyle="--", alpha=0.6)
-        axs[1].legend()
+        axs[1].legend(loc="upper left")
 
         axs[2].plot(indices, mean_scores, label="Mean Score", color="red")
         axs[2].set_ylabel("Mean Score")
         axs[2].grid(True, linestyle="--", alpha=0.6)
-        axs[2].legend()
+        axs[2].legend(loc="upper left")
 
         axs[3].plot(indices, max_scores, label="Max Score", color="purple")
         axs[3].set_ylabel("Max Score")
-        axs[3].set_xlabel("Unit Index (Z-Order)")
         axs[3].grid(True, linestyle="--", alpha=0.6)
-        axs[3].legend()
+        axs[3].legend(loc="upper left")
+
+        # --- New Combined Plot ---
+        def normalize(arr):
+            min_val = arr.min()
+            max_val = arr.max()
+            if np.isclose(max_val, min_val):
+                return np.zeros_like(arr)
+            return (arr - min_val) / (max_val - min_val)
+
+        axs[4].set_title("Combined Normalized Statistics")
+        axs[4].plot(
+            indices,
+            normalize(nn_dists),
+            label="1-NN Dist (Norm)",
+            color="blue",
+            alpha=0.8,
+        )
+        axs[4].plot(
+            indices,
+            normalize(k_dists),
+            label=f"k-Dist (k={k_val}) (Norm)",
+            color="green",
+            alpha=0.8,
+        )
+        axs[4].plot(
+            indices,
+            normalize(mean_scores),
+            label="Mean (Norm)",
+            color="red",
+            alpha=0.8,
+        )
+        axs[4].plot(
+            indices,
+            normalize(max_scores),
+            label="Max (Norm)",
+            color="purple",
+            alpha=0.8,
+        )
+        axs[4].set_ylabel("Normalized Value")
+        axs[4].set_xlabel("Unit Index (Z-Order)")
+        axs[4].grid(True, linestyle="--", alpha=0.6)
+        axs[4].legend(loc="upper left")
 
         plt.tight_layout(rect=[0, 0, 1, 0.97])  # Adjust for suptitle
 
