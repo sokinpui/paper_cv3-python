@@ -630,3 +630,127 @@ def download_all_results(state, *images):
     cv2.imwrite(temp_path, composite_img_bgr)
 
     return gr.update(value=temp_path)
+
+
+def run_and_plot_stats(
+    image_path,
+    height,
+    width,
+    overlap,
+    metric_name,
+    power_transform_degree,
+    min_samples,
+    ssim_k1,
+    ssim_k2,
+    oklab_blur_sigma,
+    oklab_w_l,
+    oklab_w_a,
+    oklab_w_b,
+    oklab_p_norm,
+    ssim_alpha,
+    ssim_beta,
+):
+    """
+    Performs a dedicated analysis and generates plots for key unit statistics.
+    """
+    if not image_path or not metric_name:
+        return None
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print(
+            "Error: Matplotlib is required. Please install it: pip install matplotlib"
+        )
+        return None
+
+    try:
+        # Setup Components
+        processor = ImageProcessor(DEVICE)
+        MetricClass = dict(METRICS_CONFIG)[metric_name]
+        if metric_name == "SSIM":
+            metric = MetricClass(
+                k1=float(ssim_k1),
+                k2=float(ssim_k2),
+                alpha=float(ssim_alpha),
+                beta=float(ssim_beta),
+            )
+        elif metric_name == "Oklab":
+            metric = MetricClass(
+                blur_sigma=float(oklab_blur_sigma),
+                weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b)),
+                p_norm=float(oklab_p_norm),
+            )
+        else:
+            metric = MetricClass()
+        analyzer = PatchAnalyzer(metric)
+
+        # Run a silent analysis
+        image_tensor = processor.load_image(image_path)
+        patches, grid_shape, _ = processor.extract_patches(
+            image_tensor, int(height), int(width), float(overlap)
+        )
+
+        N = patches.shape[0]
+        if N < 2:
+            return None
+
+        # Get all stats, unsorted
+        stats, _, _ = analyzer.analyze(
+            patches,
+            grid_shape,
+            top_n=N,  # Get all stats
+            sort_by="mean",  # doesn't matter, we re-sort
+            ascending=True,
+            min_samples=int(min_samples),
+            power_transform_degree=float(power_transform_degree),
+        )
+
+        # Re-sort by index to get Z-order
+        stats.sort(key=lambda s: s.index)
+
+        # Extract data for plotting
+        indices = [s.index for s in stats]
+        nn_dists = [s.nn_dist for s in stats]
+        k_dists = [s.neighbor_dist for s in stats]
+        mean_scores = [s.mean for s in stats]
+        max_scores = [s.max_score for s in stats]
+
+        # Plotting logic
+        fig, axs = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
+        fig.suptitle(f"Unit Statistics for '{metric_name}' (Z-Order)", fontsize=16)
+
+        axs[0].plot(indices, nn_dists, label="1-NN Distance", color="blue")
+        axs[0].set_ylabel("1-NN Distance")
+        axs[0].grid(True, linestyle="--", alpha=0.6)
+        axs[0].legend()
+
+        k_val = max(1, int(min_samples) - 1)
+        axs[1].plot(
+            indices, k_dists, label=f"k-Distance (k={k_val})", color="green"
+        )
+        axs[1].set_ylabel("k-Distance")
+        axs[1].grid(True, linestyle="--", alpha=0.6)
+        axs[1].legend()
+
+        axs[2].plot(indices, mean_scores, label="Mean Score", color="red")
+        axs[2].set_ylabel("Mean Score")
+        axs[2].grid(True, linestyle="--", alpha=0.6)
+        axs[2].legend()
+
+        axs[3].plot(indices, max_scores, label="Max Score", color="purple")
+        axs[3].set_ylabel("Max Score")
+        axs[3].set_xlabel("Unit Index (Z-Order)")
+        axs[3].grid(True, linestyle="--", alpha=0.6)
+        axs[3].legend()
+
+        plt.tight_layout(rect=[0, 0, 1, 0.97])  # Adjust for suptitle
+
+        return fig
+
+    except Exception as e:
+        print(f"Error during plotting analysis: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return None

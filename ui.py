@@ -9,6 +9,7 @@ from event_handlers import (
     download_all_results,
     run_analysis,
     run_and_plot_k_distance,
+    run_and_plot_stats,
     toggle_annotations,
     update_annotation_settings,
 )
@@ -500,6 +501,48 @@ def create_ui(input_dir=None):
                             ssim_beta_input,
                         ],
                         outputs=[score_dist_plot],
+                    )
+
+                gr.Markdown("### 📈 Unit Statistics Plots (Z-Order)")
+                with gr.Group():
+                    gr.Markdown(
+                        "Plot various unit statistics against their index (Z-order traversal). This helps visualize trends and distributions across the image."
+                    )
+                    with gr.Row():
+                        stats_plot_metric_select = gr.Dropdown(
+                            choices=[m[0] for m in METRICS_CONFIG],
+                            value="Oklab",
+                            label="Select Metric for Stats",
+                        )
+                        stats_plot_min_samples = gr.Number(
+                            value=4, label="k for k-Distance", precision=0
+                        )
+                    stats_plot_run_btn = gr.Button(
+                        "📊 Generate Statistics Plots", variant="primary"
+                    )
+                    stats_plots_output = gr.Plot(label="Unit Statistics")
+
+                    stats_plot_run_btn.click(
+                        fn=run_and_plot_stats,
+                        inputs=[
+                            img_input,
+                            h_input,
+                            w_input,
+                            overlap_input,
+                            stats_plot_metric_select,
+                            power_transform_input,
+                            stats_plot_min_samples,
+                            ssim_k1_input,
+                            ssim_k2_input,
+                            oklab_blur_sigma_input,
+                            oklab_w_l,
+                            oklab_w_a,
+                            oklab_w_b,
+                            oklab_p_norm_input,
+                            ssim_alpha_input,
+                            ssim_beta_input,
+                        ],
+                        outputs=[stats_plots_output],
                     )
 
         # Common inputs for all buttons
