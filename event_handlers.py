@@ -165,18 +165,15 @@ def create_click_handler(metric_name):
     return handler
 
 
-def toggle_annotations(state):
+def _redraw_with_updated_settings(state, cluster_show_scores, cluster_label_mode):
     """
-    Toggles the visibility of annotations on the result images.
-    Redraws the images based on the 'overlay_visible' flag in the state.
+    Helper: Updates state with latest UI params and redraws images.
     """
     if not state or "image_tensor_np" not in state:
         # Return updates to do nothing if analysis hasn't run
         return tuple([gr.update()] * len(METRICS_CONFIG) + [state])
 
-    # Toggle visibility state
-    overlay_visible = not state.get("overlay_visible", True)
-    state["overlay_visible"] = overlay_visible
+    overlay_visible = state.get("overlay_visible", True)
 
     # --- Prepare for redrawing ---
     image_tensor = torch.from_numpy(state["image_tensor_np"]).to(DEVICE)
@@ -197,6 +194,12 @@ def toggle_annotations(state):
             continue
 
         # --- Redraw annotations ---
+        # Update display params in state
+        if "cluster_show_scores" in state[name]:
+            state[name]["cluster_show_scores"] = cluster_show_scores
+        if "cluster_label_mode" in state[name]:
+            state[name]["cluster_label_mode"] = cluster_label_mode
+
         metric_data = state[name]
         selected_idx = metric_data.get("selected_unit_idx", -1)
 
@@ -210,6 +213,29 @@ def toggle_annotations(state):
         image_outputs.append(gr.update(value=result_img))
 
     return tuple(image_outputs + [state])
+
+
+def toggle_annotations(state, cluster_show_scores, cluster_label_mode):
+    """
+    Toggles the visibility of annotations on the result images.
+    Also updates the display settings from UI.
+    """
+    if not state:
+        return tuple([gr.update()] * len(METRICS_CONFIG) + [state])
+
+    # Toggle visibility state
+    state["overlay_visible"] = not state.get("overlay_visible", True)
+
+    return _redraw_with_updated_settings(state, cluster_show_scores, cluster_label_mode)
+
+
+def update_annotation_settings(state, cluster_show_scores, cluster_label_mode):
+    """
+    Redraws the images with updated settings (e.g. label mode) without toggling visibility.
+    """
+    if not state:
+        return tuple([gr.update()] * len(METRICS_CONFIG) + [state])
+    return _redraw_with_updated_settings(state, cluster_show_scores, cluster_label_mode)
 
 
 def run_analysis(

@@ -10,6 +10,7 @@ from event_handlers import (
     run_analysis,
     run_and_plot_k_distance,
     toggle_annotations,
+    update_annotation_settings,
 )
 from ui_helpers import calculate_vector_distance, clear_vector_inputs
 
@@ -68,9 +69,9 @@ def create_ui(input_dir=None):
                     )
                     oklab_p_norm_input = gr.Slider(
                         minimum=1.0,
-                        maximum=20.0,
+                        maximum=10.0,
                         value=2.0,
-                        step=0.5,
+                        step=1.0,
                         label="Norm Degree (P-Value)",
                         info="2.0=Euclidean. Increase to >2.0 to suppress small distributed noise and highlight sharp deviations.",
                     )
@@ -513,9 +514,9 @@ def create_ui(input_dir=None):
             mode_input,
             k_input,
             cluster_show_scores,
-            cluster_label_mode,
             cluster_metric_input,
             cluster_threshold_n_input,
+            cluster_label_mode,
             distance_funcs_input,
             h_method_input,
             dbscan_eps_input,
@@ -542,9 +543,17 @@ def create_ui(input_dir=None):
 
         btn_toggle_annotations.click(
             fn=toggle_annotations,
-            inputs=[analysis_state],
+            inputs=[analysis_state, cluster_show_scores, cluster_label_mode],
             outputs=[m[1] for m in metric_images] + [analysis_state],
         )
+
+        # Enable dynamic updating of visualization settings
+        for comp in [cluster_show_scores, cluster_label_mode]:
+            comp.change(
+                fn=update_annotation_settings,
+                inputs=[analysis_state, cluster_show_scores, cluster_label_mode],
+                outputs=[m[1] for m in metric_images] + [analysis_state],
+            )
 
         # Wire download button
         btn_download_all.click(
