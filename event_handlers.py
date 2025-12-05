@@ -257,6 +257,7 @@ def run_analysis(
     dbscan_eps,
     dbscan_min_samples,
     power_transform_degree,
+    sigmoid_k,
     ssim_k1,
     ssim_k2,
     oklab_blur_sigma,
@@ -406,6 +407,7 @@ def run_analysis(
                 eps=float(dbscan_eps),
                 min_samples=int(dbscan_min_samples),
                 power_transform_degree=float(power_transform_degree),
+                sigmoid_k=float(sigmoid_k),
             )
 
             # Perform Clustering (Stats-based) if requested
@@ -484,6 +486,7 @@ def run_and_plot_k_distance(
     overlap,
     metric_name,
     power_transform_degree,
+    sigmoid_k,
     min_samples,
     eps,
     ssim_k1,
@@ -537,12 +540,10 @@ def run_and_plot_k_distance(
             image_tensor, int(height), int(width), float(overlap)
         )
 
-        # 1. Compute Similarity/Distance Matrix (N, N)
-        matrix = metric.compute(patches)
-
-        # Apply Power Transformation
-        if float(power_transform_degree) != 1.0:
-            matrix = torch.pow(matrix.clamp(min=0.0), float(power_transform_degree))
+        # 1. Compute Matrix with Transformations
+        matrix = analyzer.compute_distance_matrix(
+            patches, float(power_transform_degree), float(sigmoid_k)
+        )
 
         N = matrix.shape[0]
         if N < int(min_samples):
@@ -639,6 +640,7 @@ def run_and_plot_stats(
     overlap,
     metric_name,
     power_transform_degree,
+    sigmoid_k,
     min_samples,
     ssim_k1,
     ssim_k2,
@@ -704,6 +706,7 @@ def run_and_plot_stats(
             ascending=True,
             min_samples=int(min_samples),
             power_transform_degree=float(power_transform_degree),
+            sigmoid_k=float(sigmoid_k),
         )
 
         # Re-sort by index to get Z-order

@@ -117,6 +117,12 @@ def main():
         default=0.4,
         help="Raise distance to a power (distance^n). Default is 1.0 (no change).",
     )
+    parser.add_argument(
+        "--sigmoid_k",
+        type=float,
+        default=0.0,
+        help="Sigmoid contrast factor (k). 0=Off. >0 applies sigmoid stretch to distances.",
+    )
 
     args = parser.parse_args()
 
@@ -195,6 +201,7 @@ def main():
             sort_by=args.sort_by,
             ascending=ascending,
             power_transform_degree=args.power_transform,
+            sigmoid_k=args.sigmoid_k,
         )
 
         # 4. Output
