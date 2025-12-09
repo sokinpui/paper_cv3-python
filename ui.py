@@ -6,11 +6,7 @@ import gradio as gr
 from config import METRICS_CONFIG
 from event_handlers import (
     create_click_handler,
-    create_download_handler,
     run_analysis,
-    run_and_plot_k_distance,
-    plot_sigmoid_function,
-    run_and_plot_stats,
     toggle_annotations,
     update_annotation_settings,
 )
@@ -261,7 +257,6 @@ def create_ui(input_dir=None):
                 # Dynamically create output rows for each metric
                 metric_outputs = []
                 metric_images = []  # Keep track of image components to bind events
-                metric_download_handlers = []
 
                 for name, _ in METRICS_CONFIG:
                     # Using a group to manage visibility of the whole block for a metric
@@ -269,15 +264,10 @@ def create_ui(input_dir=None):
                         gr.Markdown(f"**{name}**")
                         m_img = gr.Image(label=f"Result ({name})", type="numpy")
                         m_perf = gr.Markdown(value="Waiting...")
-                        m_download_btn = gr.DownloadButton(
-                            f"💾 Download {name} Result", variant="secondary"
-                        )
 
                     # These are the components that run_analysis needs to update
                     metric_outputs.extend([metric_group, m_img, m_perf])
                     metric_images.append((name, m_img))
-                    # Store button and its metric name
-                    metric_download_handlers.append((m_download_btn, name))
 
                 gr.Markdown("### 📐 Vector Calculator")
                 with gr.Group():
@@ -314,114 +304,6 @@ def create_ui(input_dir=None):
                 json_output = gr.Code(language="json", label="Statistics")
                 analysis_state = gr.State({})  # Store matrix data per session
 
-                gr.Markdown("### 📈 K-Distance Graph (Global Analysis)")
-                with gr.Group():
-                    gr.Markdown(
-                        "Analyze the distance matrix to find the optimal DBSCAN Eps (the 'Elbow' in the graph). This runs a separate, dedicated analysis."
-                    )
-                    with gr.Row():
-                        plot_metric_select = gr.Dropdown(
-                            choices=[m[0] for m in METRICS_CONFIG],
-                            value="Oklab",
-                            label="Select Metric to Plot",
-                        )
-                        plot_min_samples = gr.Number(
-                            value=4, label="K-Dist. Min Samples", precision=0
-                        )
-                        plot_eps_input = gr.Number(
-                            value=0.0,
-                            label="Plot Eps Threshold",
-                            info="If > 0.0, draws a horizontal line. If <= 0.0, auto-detects and plots (K-needle).",
-                        )
-                    plot_run_btn = gr.Button(
-                        "📊 Generate K-Distance Plot", variant="primary"
-                    )
-                    score_dist_plot = gr.Plot(label="Score Distribution")
-
-                    plot_run_btn.click(
-                        fn=run_and_plot_k_distance,
-                        inputs=[
-                            img_input,
-                            h_input,
-                            w_input,
-                            overlap_input,
-                            plot_metric_select,
-                            power_transform_input,
-                            sigmoid_k_input,
-                            plot_min_samples,
-                            plot_eps_input,
-                            ssim_k1_input,
-                            ssim_k2_input,
-                            oklab_blur_sigma_input,
-                            oklab_w_l,
-                            oklab_w_a,
-                            oklab_w_b,
-                            oklab_p_norm_input,
-                            ssim_alpha_input,
-                            ssim_beta_input,
-                        ],
-                        outputs=[score_dist_plot],
-                    )
-
-                gr.Markdown("### 📈 Unit Statistics Plots (Z-Order)")
-                with gr.Group():
-                    gr.Markdown(
-                        "Plot various unit statistics against their index (Z-order traversal). This helps visualize trends and distributions across the image."
-                    )
-                    with gr.Row():
-                        stats_plot_metric_select = gr.Dropdown(
-                            choices=[m[0] for m in METRICS_CONFIG],
-                            value="Oklab",
-                            label="Select Metric for Stats",
-                        )
-                        stats_plot_min_samples = gr.Number(
-                            value=4, label="k for k-Distance", precision=0
-                        )
-                    stats_plot_run_btn = gr.Button(
-                        "📊 Generate Statistics Plots", variant="primary"
-                    )
-                    stats_plots_output = gr.Plot(label="Unit Statistics")
-
-                    stats_plot_run_btn.click(
-                        fn=run_and_plot_stats,
-                        inputs=[
-                            img_input,
-                            h_input,
-                            w_input,
-                            overlap_input,
-                            stats_plot_metric_select,
-                            power_transform_input,
-                            sigmoid_k_input,
-                            stats_plot_min_samples,
-                            ssim_k1_input,
-                            ssim_k2_input,
-                            oklab_blur_sigma_input,
-                            oklab_w_l,
-                            oklab_w_a,
-                            oklab_w_b,
-                            oklab_p_norm_input,
-                            ssim_alpha_input,
-                            ssim_beta_input,
-                        ],
-                        outputs=[stats_plots_output],
-                    )
-
-                gr.Markdown("### 📈 Sigmoid Function Visualizer")
-                with gr.Group():
-                    gr.Markdown(
-                        "Visualize the shape of the Sigmoid function used for contrast stretching, based on the 'Sigmoid Contrast (k)' slider value from the main settings."
-                    )
-                    sigmoid_plot_btn = gr.Button(
-                        "📊 Plot Sigmoid Function", variant="secondary"
-                    )
-                    sigmoid_plot_output = gr.Plot(label="Sigmoid Function")
-
-                    sigmoid_plot_btn.click(
-                        fn=plot_sigmoid_function,
-                        inputs=[sigmoid_k_input],
-                        outputs=[sigmoid_plot_output],
-                    )
-
         # Common inputs for all buttons
         common_inputs = [
             img_input,
@@ -447,8 +329,7 @@ def create_ui(input_dir=None):
             ssim_beta_input,
             analysis_state,
         ]
-        download_buttons = [t[0] for t in metric_download_handlers]
-        common_outputs = metric_outputs + [json_output, analysis_state] + download_buttons
+        common_outputs = metric_outputs + [json_output, analysis_state]
 
         btn_run.click(
             fn=run_analysis,
@@ -468,14 +349,6 @@ def create_ui(input_dir=None):
                 fn=update_annotation_settings,
                 inputs=[analysis_state, cluster_show_scores, cluster_label_mode],
                 outputs=[m[1] for m in metric_images] + [analysis_state],
-            )
-
-        # Wire download buttons
-        for btn, name in metric_download_handlers:
-            btn.click(
-                fn=create_download_handler(name),
-                inputs=[analysis_state],
-                outputs=btn,
             )
 
         # Wire Select/Click Events for Result Images
