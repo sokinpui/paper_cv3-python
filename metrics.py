@@ -13,13 +13,6 @@ class MetricStrategy:
         """
         raise NotImplementedError
 
-    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
-        """
-        Returns a feature vector representation for K-Means clustering.
-        Default: Flattened raw patches (N, C*H*W).
-        """
-        return patches.reshape(patches.shape[0], -1)
-
 
 class SSIMMetric(MetricStrategy):
     def __init__(
@@ -94,90 +87,6 @@ class SSIMMetric(MetricStrategy):
         return ssim_matrix
 
 
-class CIELabMetric(MetricStrategy):
-    def compute(self, patches: torch.Tensor) -> torch.Tensor:
-        """
-        Computes Delta E (Euclidean distance in Lab space).
-        Input assumed to be normalized RGB [0, 1].
-        """
-        lab = self.get_features(patches)
-        N = patches.shape[0]
-        H, W = patches.shape[2], patches.shape[3]
-
-        # Calculating pairwise distance for (N, C, H, W) is heavy if we do pixel-to-pixel exact match.
-        # Assumption: We compare Unit X to Unit Y.
-        # Distance = Mean Euclidean distance between corresponding pixels.
-
-        # Reshape: (N, D) where D = C*H*W
-        flat_vec = lab.reshape(
-            N, -1
-        )  # This is already flat if coming from get_features?
-
-        # Euclidean Distance Matrix: ||A - B|| = sqrt(||A||^2 + ||B||^2 - 2<A,B>)
-        # This computes distance between the flattened vectors.
-        # To get Mean Delta E, we need to be careful.
-        # Let's use the vector distance normalized by number of pixels.
-
-        dists = torch.cdist(flat_vec, flat_vec, p=2)
-
-        # Normalize by sqrt(pixels) because cdist sums squared differences
-        # dist = sqrt(sum((a-b)^2))
-        # mean_dist = dist / sqrt(H*W) is not quite right mathematically for Mean Delta E,
-        # but it is a monotonic ranking equivalent.
-        # For exact Mean Delta E, we would need element-wise averaging which is O(N^2 * H * W).
-        # We will use Root Mean Square Error (RMSE) equivalent here.
-
-        return dists / (H * W) ** 0.5
-
-    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
-        """
-        Returns flattened Lab image data (channels a and b only).
-        """
-        lab = self._rgb_to_lab(patches)
-        # Keep only a, b (indices 1, 2) as per original logic
-        lab = lab[:, 1:, :, :]
-        # Return flattened (N, -1)
-        return lab.reshape(patches.shape[0], -1)
-
-    def _rgb_to_lab(self, image: torch.Tensor) -> torch.Tensor:
-        # RGB to XYZ
-        # Assuming image is (N, 3, H, W) in [0, 1]
-        r = image[:, 0, :, :]
-        g = image[:, 1, :, :]
-        b = image[:, 2, :, :]
-
-        def _pivot_rgb(v):
-            mask = v > 0.04045
-            v[mask] = ((v[mask] + 0.055) / 1.055) ** 2.4
-            v[~mask] = v[~mask] / 12.92
-            return v * 100
-
-        r = _pivot_rgb(r.clone())
-        g = _pivot_rgb(g.clone())
-        b = _pivot_rgb(b.clone())
-
-        x = r * 0.4124 + g * 0.3576 + b * 0.1805
-        y = r * 0.2126 + g * 0.7152 + b * 0.0722
-        z = r * 0.0193 + g * 0.1192 + b * 0.9505
-
-        # XYZ to Lab
-        def _pivot_xyz(v):
-            mask = v > 0.008856
-            v[mask] = torch.pow(v[mask], 1 / 3)
-            v[~mask] = (7.787 * v[~mask]) + (16 / 116)
-            return v
-
-        x = _pivot_xyz(x / 95.047)
-        y = _pivot_xyz(y / 100.000)
-        z = _pivot_xyz(z / 108.883)
-
-        l_chan = (116 * y) - 16
-        a_chan = 500 * (x - y)
-        b_chan = 200 * (y - z)
-
-        return torch.stack([l_chan, a_chan, b_chan], dim=1)
-
-
 class HumanEyeColorMetric(MetricStrategy):
     def __init__(
         self,
@@ -222,10 +131,6 @@ class HumanEyeColorMetric(MetricStrategy):
         dists = torch.cdist(flat_vec, flat_vec, p=self.p_norm)
 
         return dists
-
-    def get_features(self, patches: torch.Tensor) -> torch.Tensor:
-        oklab = self._rgb_to_oklab(patches)
-        return oklab.reshape(patches.shape[0], -1)
 
     def _rgb_to_oklab(self, image: torch.Tensor) -> torch.Tensor:
         # Assumes image is (N, 3, H, W) in [0, 1] sRGB

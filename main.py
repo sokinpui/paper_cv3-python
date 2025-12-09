@@ -6,7 +6,7 @@ import torch
 
 import visualizer
 from analyzer import PatchAnalyzer
-from metrics import CIELabMetric, CosineMetric, HumanEyeColorMetric, SSIMMetric
+from metrics import CosineMetric, HumanEyeColorMetric, SSIMMetric
 from processor import ImageProcessor
 
 
@@ -126,8 +126,6 @@ def main():
         metric = HumanEyeColorMetric()
     elif args.metric == "cosine":
         metric = CosineMetric()
-    else:
-        metric = CIELabMetric()
 
     # Both metrics now use High Score = Different. Default sort is Descending (False).
     ascending = args.ascending
