@@ -290,16 +290,19 @@ def run_analysis(
 
     # Initialize output structure: [Img, Perf] per metric + [JSON]
     num_metrics = len(METRICS_CONFIG)
+    json_idx = num_metrics * 3
+    state_idx = num_metrics * 3 + 1
+
     # Fill with None/Empty strings
     # Structure: [Header, Image, Perf] per metric
     # + [JSON] + [State]
     current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + [
         "",
         current_state,
-    ]
+    ] + [gr.update(value=None)] * num_metrics
 
     if image_path is None:
-        current_outputs[-2] = "Please upload an image."
+        current_outputs[json_idx] = "Please upload an image."
         yield tuple(current_outputs)
         return
 
@@ -462,10 +465,10 @@ def run_analysis(
             all_stats_collection.extend([s.to_dict() for s in stats[:1]])
 
             # Update JSON (accumulated)
-            current_outputs[-2] = json.dumps(
+            current_outputs[json_idx] = json.dumps(
                 all_stats_collection[:actual_top_n], indent=4
             )
-            current_outputs[-1] = new_state
+            current_outputs[state_idx] = new_state
 
             # Yield current state
             yield tuple(current_outputs)
@@ -475,7 +478,7 @@ def run_analysis(
 
         traceback.print_exc()
         # Yield error in the JSON field
-        current_outputs[-2] = f"Error: {str(e)}"
+        current_outputs[json_idx] = f"Error: {str(e)}"
         yield tuple(current_outputs)
 
 
@@ -596,42 +599,58 @@ def run_and_plot_k_distance(
         traceback.print_exc()
         return None
 
-
-def download_all_results(state, *images):
+def download_single_result(state, metric_name):
     """
-    Combines all visible result images into a single downloadable image.
+    Combines the input image and a single visible result image into a
+    side-by-side downloadable JPG image.
     """
-    from visualizer import create_composite_image
+    from visualizer import create_side_by_side_image
 
-    if not state or "image_tensor_np" not in state:
+    if not state or "image_tensor_np" not in state or metric_name not in state:
         return None
 
-    # Filter out metrics that weren't run or are not visible
-    image_data = []
-    for i, (name, _) in enumerate(METRICS_CONFIG):
-        if name in state and images[i] is not None:
-            # The image from gradio is already a numpy array
-            image_data.append((name, images[i]))
+    # 1. Get Input Image from state and convert to displayable numpy
+    input_img_np = state["image_tensor_np"]
+    if input_img_np.shape[0] == 1:  # Remove batch dim if present
+        input_img_np = input_img_np.squeeze(0)
+    input_img_np_rgb = np.transpose(input_img_np, (1, 2, 0))
+    input_img_np_rgb = (input_img_np_rgb * 255).clip(0, 255).astype(np.uint8)
 
-    if not image_data:
-        return None  # No images to download
+    # 2. Regenerate the specific result image from state
+    image_tensor = torch.from_numpy(state["image_tensor_np"]).to(DEVICE)
+    overlay_visible = state.get("overlay_visible", True)
 
-    # Create the composite image
-    composite_img = create_composite_image(image_data)
+    metric_data = state[metric_name]
 
-    # Ensure tmp directory exists
+    # Regenerate the image using the same function as other UI updates
+    result_img = _redraw_metric_image(
+        image_tensor,
+        metric_data,
+        metric_data.get("selected_unit_idx", -1),
+        show_overlay=overlay_visible,
+    )
+
+    # 3. Stitch input and result side-by-side
+    final_image = create_side_by_side_image(input_img_np_rgb, result_img)
+
+    # 4. Save to a temporary JPG file
     if not os.path.exists("tmp"):
         os.makedirs("tmp")
 
-    # Save to a temporary file
-    _, temp_path = tempfile.mkstemp(suffix=".png", dir="tmp")
+    _, temp_path = tempfile.mkstemp(suffix=".jpg", dir="tmp")
 
-    # cv2 expects BGR for imwrite
-    composite_img_bgr = cv2.cvtColor(composite_img, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(temp_path, composite_img_bgr)
+    final_image_bgr = cv2.cvtColor(final_image, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(temp_path, final_image_bgr)
 
-    return gr.update(value=temp_path)
+    return temp_path
 
+def create_download_handler(metric_name):
+    """Closure to capture metric_name for the download handler."""
+
+    def handler(state):
+        return download_single_result(state, metric_name)
+
+    return handler
 
 def run_and_plot_stats(
     image_path,
@@ -798,3 +817,40 @@ def run_and_plot_stats(
 
         traceback.print_exc()
         return None
+
+
+def plot_sigmoid_function(k: float):
+    """
+    Generates a plot of the sigmoid function based on the k value.
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except ImportError:
+        print(
+            "Error: Matplotlib/Numpy is required. Please install it: pip install matplotlib numpy"
+        )
+        return None
+
+    k = float(k)
+    fig, ax = plt.subplots(figsize=(8, 4))
+    x = np.linspace(0, 1, 200)
+
+    if k <= 0:
+        ax.plot(
+            [0, 1], [0, 1], label="Sigmoid Disabled (k=0)", color="gray", linestyle="--"
+        )
+        ax.set_title("Sigmoid Function (Disabled)")
+    else:
+        mu = 0.5
+        y = 1.0 / (1.0 + np.exp(-k * (x - mu)))
+        ax.plot(x, y, label=f"k = {k:.2f}")
+        ax.set_title("Sigmoid Function Shape")
+
+    ax.set_xlabel("Input Value (Normalized Distance)")
+    ax.set_ylabel("Output Value (Stretched Distance)")
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+    plt.tight_layout()
+
+    return fig

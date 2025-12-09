@@ -351,6 +351,40 @@ def create_cluster_map(
     return img_np
 
 
+def create_side_by_side_image(
+    input_image: np.ndarray, result_image: np.ndarray
+) -> np.ndarray:
+    """
+    Stitches the input image and result image side-by-side, aligning height.
+    Resizes the taller image to match the height of the shorter one, preserving aspect ratio.
+    """
+    h1, w1 = input_image.shape[:2]
+    h2, w2 = result_image.shape[:2]
+
+    if h1 != h2:
+        # Resize the taller image to match the height of the shorter one
+        if h1 > h2:
+            new_w1 = int(w1 * (h2 / h1))
+            input_image = cv2.resize(
+                input_image, (new_w1, h2), interpolation=cv2.INTER_AREA
+            )
+        else:  # h2 > h1
+            new_w2 = int(w2 * (h1 / h2))
+            result_image = cv2.resize(
+                result_image, (new_w2, h1), interpolation=cv2.INTER_AREA
+            )
+
+    padding = 10
+    h = input_image.shape[0]
+    w = input_image.shape[1] + result_image.shape[1] + padding
+
+    composite = np.full((h, w, 3), 255, dtype=np.uint8)  # White background
+    composite[:, : input_image.shape[1]] = input_image
+    composite[:, input_image.shape[1] + padding :] = result_image
+
+    return composite
+
+
 def create_composite_image(image_data: list) -> np.ndarray:
     """
     Stitches multiple images with headers into a single tall image.
