@@ -59,53 +59,23 @@ def _redraw_metric_image(
         img_np_rgb = image_tensor.permute(1, 2, 0).cpu().numpy()
         return (img_np_rgb * 255).clip(0, 255).astype(np.uint8)
 
-    action_mode = metric_data["action_mode"]
     stats = metric_data["stats"]
     grid_shape = metric_data["grid_shape"]
     strides = metric_data["strides"]
     height, width = metric_data["unit_size"]
     label_mode = metric_data.get("cluster_label_mode", "1-NN Distance")
 
-    if action_mode in [
-        "clustering",
-        "clustering2",
-        "clustering_hierarchical",
-        "clustering_spectral",
-        "clustering_dbscan",
-        "clustering_dbscan2",
-    ]:
-        return visualizer.create_cluster_map(
-            image_tensor,
-            stats,
-            grid_shape,
-            strides,
-            height,
-            width,
-            show_scores=metric_data["cluster_show_scores"],
-            selected_unit_index=selected_unit_idx,
-            label_mode=label_mode,
-        )
-    elif action_mode == "heatmap":
-        return visualizer.create_heatmap(
-            image_tensor,
-            stats,
-            grid_shape,
-            strides,
-            height,
-            width,
-            stat_name=metric_data["sort_by"],
-            selected_unit_index=selected_unit_idx,
-        )
-    else:  # 'top_n' or 'all'
-        return visualizer.get_annotated_rgb(
-            image_tensor,
-            stats,
-            height,
-            width,
-            grid_shape,
-            strides,
-            selected_unit_index=selected_unit_idx,
-        )
+    return visualizer.create_cluster_map(
+        image_tensor,
+        stats,
+        grid_shape,
+        strides,
+        height,
+        width,
+        show_scores=metric_data["cluster_show_scores"],
+        selected_unit_index=selected_unit_idx,
+        label_mode=label_mode,
+    )
 
 
 def calculate_vector_distance(vec_a, vec_b):

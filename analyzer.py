@@ -78,9 +78,7 @@ class PatchAnalyzer:
         sort_by: str = "mean",
         ascending: bool = True,
         cluster_on_matrix: bool = False,
-        k: int = 2,
         clustering_algorithm: str = "kmeans",
-        hierarchical_method: str = "ward",
         eps: float = 0.0,
         min_samples: int = 2,
         power_transform_degree: float = 0.4,
@@ -120,17 +118,12 @@ class PatchAnalyzer:
             calculated_eps = find_dbscan_eps(matrix, min_samples)
 
         if cluster_on_matrix:
-            if clustering_algorithm == "hierarchical":
-                matrix_labels = hierarchical(matrix, k, method=hierarchical_method)
-            elif clustering_algorithm == "spectral":
-                matrix_labels = spectral(matrix, k)
-            elif clustering_algorithm == "dbscan":
+            if clustering_algorithm == "dbscan":
                 # Guard Clause: eps must be > 0.0 now
                 if calculated_eps <= 0.0:
                     raise ValueError(
                         "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
                     )
-
                 matrix_labels = dbscan(matrix, calculated_eps, min_samples)
             elif clustering_algorithm == "dbscan2":
                 if calculated_eps <= 0.0:
@@ -138,10 +131,6 @@ class PatchAnalyzer:
                         "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
                     )
                 matrix_labels = dbscan2(matrix, calculated_eps, min_samples)
-            else:
-                # Default to K-Means if k > 1
-                if k > 1:
-                    matrix_labels = kmeans(matrix, k)
 
         # 2. Mask diagonal (self-comparison) to avoid skewing stats
         # We set diagonal to NaN so we can ignore it in stats
@@ -212,35 +201,3 @@ class PatchAnalyzer:
 
         return results[:top_n], matrix, calculated_eps
 
-    def cluster_stats(
-        self,
-        stats: List[UnitStats],
-        k: int,
-        metric: str = "mean",
-        threshold_n: float = 1.0,
-    ) -> List[UnitStats]:
-        """
-        Performs 1D K-Means clustering on the specified score of the units.
-        Updates the cluster_id in the UnitStats objects.
-        """
-        if not stats or k < 2:
-            return stats
-
-        # Extract data (N, 1) based on metric
-        values = []
-        for s in stats:
-            if metric == "std_dev":
-                values.append(s.std_dev)
-            elif metric == "threshold":
-                values.append(s.mean + threshold_n * s.std_dev)
-            else:
-                values.append(s.mean)
-
-        data = torch.tensor(values, dtype=torch.float32).view(-1, 1)
-        labels = kmeans(data, k)
-
-        # Assign back to stats
-        for i, s in enumerate(stats):
-            s.cluster_id = labels[i].item()
-
-        return stats

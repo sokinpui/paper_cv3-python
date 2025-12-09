@@ -36,9 +36,6 @@ def create_ui(input_dir=None):
                 # Action Buttons
                 mode_input = gr.Radio(
                     choices=[
-                        # "Clustering (K-means)",
-                        # "Clustering (Spectral)",
-                        # "Clustering (Hierarchical)",
                         "Clustering (DBSCAN)",
                         "Clustering (DBSCAN2)",
                     ],
@@ -233,182 +230,29 @@ def create_ui(input_dir=None):
                     outputs=[h_input, w_input],
                 )
 
-                # Dynamic Settings
-                top_n_input = gr.Number(
-                    value=5, label="Top N Units", precision=0, visible=False
-                )
-                sort_input = gr.Dropdown(
-                    choices=[
-                        "mean",
-                        "median",
-                        "std_dev",
-                        "min_score",
-                        "max_score",
-                        "l2_norm",
-                    ],
-                    value="mean",
-                    label="Sort By Stat",
-                    visible=False,
-                )
-
-                desc_input = gr.Checkbox(
-                    value=True,
-                    label="Sort Descending (High Score = Significant)",
-                    visible=False,
-                )
-
-                k_input = gr.Slider(
-                    minimum=2,
-                    maximum=8,
-                    value=2,
-                    step=1,
-                    label="K Clusters (for Clustering)",
-                    visible=True,
-                )
-
-                h_method_input = gr.Dropdown(
-                    choices=["ward", "single", "complete", "average"],
-                    value="ward",
-                    label="Linkage Method (Hierarchical Only)",
-                    visible=False,
-                )
-
                 # DBSCAN Settings
                 dbscan_eps_input = gr.Number(
                     value=0.0,
                     label="DBSCAN Eps",
                     info="Distance threshold. Set to 0.0 for auto-detection (K-needle).",
-                    visible=False,
+                    visible=True,
                 )
                 dbscan_min_input = gr.Number(
                     value=4,
                     label="DBSCAN Min Samples",
                     precision=0,
-                    visible=False,
+                    visible=True,
                 )
 
                 cluster_label_mode = gr.Dropdown(
                     choices=["1-NN Distance", "k-Distance", "Mean Score", "Max Score"],
                     value="1-NN Distance",
                     label="Map Label Value",
-                    visible=False,
-                )
-
-                cluster_metric_input = gr.Dropdown(
-                    choices=["mean", "std_dev", "threshold"],
-                    value="mean",
-                    label="Clustering Score",
-                    visible=False,
-                )
-
-                cluster_threshold_n_input = gr.Number(
-                    value=1.0,
-                    label="Threshold N (Mean + N * Std)",
-                    visible=False,
+                    visible=True,
                 )
 
                 cluster_show_scores = gr.Checkbox(
                     value=False, label="Show Units' Stat", visible=True
-                )
-
-                # Visibility Logic
-                def update_visibility(mode, metric, dbscan_eps):
-                    is_top_n = mode == "Top N"
-                    is_all = mode == "All Units"
-                    is_heatmap = mode == "Heatmap"
-                    is_cluster = mode == "Clustering"
-                    is_cluster2 = mode == "Clustering (K-means)"
-                    is_cluster_h = mode == "Clustering (Hierarchical)"
-                    is_cluster_s = mode == "Clustering (Spectral)"
-                    is_cluster_d = mode == "Clustering (DBSCAN)"
-                    is_cluster_d2 = mode == "Clustering (DBSCAN2)"
-
-                    is_threshold = is_cluster and (metric == "threshold")
-                    is_dbscan_mode = is_cluster_d or is_cluster_d2
-                    is_clustering_any = (
-                        is_cluster
-                        or is_cluster2
-                        or is_cluster_h
-                        or is_cluster_s
-                        or is_cluster_d
-                        or is_cluster_d2
-                    )
-
-                    return (
-                        gr.update(visible=is_top_n),  # top_n
-                        gr.update(visible=(is_top_n or is_all or is_heatmap)),  # sort
-                        gr.update(visible=(is_top_n or is_all)),  # desc
-                        gr.update(
-                            visible=(is_cluster or is_cluster2 or is_cluster_s)
-                            and not is_dbscan_mode
-                        ),  # k (Hidden for Hierarchical)
-                        gr.update(visible=is_clustering_any),  # show_scores
-                        gr.update(
-                            visible=is_clustering_any
-                        ),  # cluster_label_mode (show whenever show_scores is relevant)
-                        gr.update(
-                            visible=is_cluster
-                        ),  # cluster_metric (only for stats clustering)
-                        gr.update(visible=is_cluster_h),  # linkage method
-                        gr.update(visible=is_threshold),  # threshold_n
-                        gr.update(visible=is_dbscan_mode),  # dbscan eps
-                        gr.update(visible=is_dbscan_mode),  # dbscan min
-                    )
-
-                mode_input.change(
-                    fn=update_visibility,
-                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
-                    outputs=[
-                        top_n_input,
-                        sort_input,
-                        desc_input,
-                        k_input,
-                        cluster_show_scores,
-                        cluster_label_mode,
-                        cluster_metric_input,
-                        h_method_input,
-                        cluster_threshold_n_input,
-                        dbscan_eps_input,
-                        dbscan_min_input,
-                    ],
-                )
-
-                for comp in [cluster_metric_input, dbscan_eps_input]:
-                    comp.change(
-                        fn=update_visibility,
-                        inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
-                        outputs=[
-                            top_n_input,
-                            sort_input,
-                            desc_input,
-                            k_input,
-                            cluster_show_scores,
-                            cluster_label_mode,
-                            cluster_metric_input,
-                            h_method_input,
-                            cluster_threshold_n_input,
-                            dbscan_eps_input,
-                            dbscan_min_input,
-                        ],
-                    )
-
-                # Trigger visibility update on load to match default mode
-                demo.load(
-                    fn=update_visibility,
-                    inputs=[mode_input, cluster_metric_input, dbscan_eps_input],
-                    outputs=[
-                        top_n_input,
-                        sort_input,
-                        desc_input,
-                        k_input,
-                        cluster_show_scores,
-                        cluster_label_mode,
-                        cluster_metric_input,
-                        h_method_input,
-                        cluster_threshold_n_input,
-                        dbscan_eps_input,
-                        dbscan_min_input,
-                    ],
                 )
 
             with gr.Column(scale=3):
@@ -583,28 +427,21 @@ def create_ui(input_dir=None):
             img_input,
             h_input,
             w_input,
-            top_n_input,
-            sort_input,
-            desc_input,
             overlap_input,
             mode_input,
-            k_input,
             cluster_show_scores,
-            cluster_metric_input,
-            cluster_threshold_n_input,
             cluster_label_mode,
             distance_funcs_input,
-            h_method_input,
             dbscan_eps_input,
             dbscan_min_input,
             power_transform_input,
             sigmoid_k_input,
             ssim_k1_input,
             ssim_k2_input,
+            oklab_blur_sigma_input,
             oklab_w_l,
             oklab_w_a,
             oklab_w_b,
-            oklab_blur_sigma_input,
             oklab_p_norm_input,
             ssim_alpha_input,
             ssim_beta_input,

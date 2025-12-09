@@ -242,18 +242,11 @@ def run_analysis(
     image_path,
     height,
     width,
-    top_n,
-    sort_by,
-    descending,
     overlap,
     action_mode_ui,
-    k_clusters,
     cluster_show_scores,
-    cluster_metric,
-    cluster_threshold_n,
     cluster_label_mode,
     selected_distance_functions,
-    hierarchical_method,
     dbscan_eps,
     dbscan_min_samples,
     power_transform_degree,
@@ -276,17 +269,10 @@ def run_analysis(
     """
     # Map UI string to internal mode
     mode_map = {
-        "Top N": "top_n",
-        "All Units": "all",
-        "Heatmap": "heatmap",
-        "Clustering": "clustering",
-        "Clustering (K-means)": "clustering2",
-        "Clustering (Hierarchical)": "clustering_hierarchical",
-        "Clustering (Spectral)": "clustering_spectral",
         "Clustering (DBSCAN)": "clustering_dbscan",
         "Clustering (DBSCAN2)": "clustering_dbscan2",
     }
-    action_mode = mode_map.get(action_mode_ui, "top_n")
+    action_mode = mode_map.get(action_mode_ui, "clustering_dbscan")
 
     # Initialize output structure: [Img, Perf] per metric + [JSON]
     num_metrics = len(METRICS_CONFIG)
@@ -329,21 +315,7 @@ def run_analysis(
         # 3. Analyze & Annotate (Detection Phase)
         t_det_start = time.time()
 
-        # Determine effective top_n
-        if action_mode in [
-            "all",
-            "heatmap",
-            "clustering",
-            "clustering2",
-            "clustering_hierarchical",
-            "clustering_spectral",
-            "clustering_dbscan",
-            "clustering_dbscan2",
-        ]:
-            # Use a number larger than any possible grid count
-            actual_top_n = 999999
-        else:
-            actual_top_n = int(top_n)
+        actual_top_n = 999999
 
         all_stats_collection = []
 
@@ -376,51 +348,27 @@ def run_analysis(
 
             analyzer = PatchAnalyzer(metric)
 
-            # If clustering2, we do clustering inside analyze on the matrix
-            do_matrix_cluster = action_mode in [
-                "clustering2",
-                "clustering_hierarchical",
-                "clustering_spectral",
-                "clustering_dbscan",
-                "clustering_dbscan2",
-            ]
-            algo = "kmeans"
-            if action_mode == "clustering_hierarchical":
-                algo = "hierarchical"
-            elif action_mode == "clustering_spectral":
-                algo = "spectral"
-            elif action_mode == "clustering_dbscan":
+            if action_mode == "clustering_dbscan":
                 algo = "dbscan"
             elif action_mode == "clustering_dbscan2":
                 algo = "dbscan2"
-
-            # For hierarchical, we ignore k_clusters input and let analyzer decide (pass 0)
-            k_val = 0 if action_mode == "clustering_hierarchical" else int(k_clusters)
+            else:
+                # Should not happen with the current UI
+                algo = "dbscan"
 
             stats, matrix, calculated_eps = analyzer.analyze(
                 patches,
                 grid_shape,
                 top_n=actual_top_n,
-                sort_by=sort_by,
-                ascending=not descending,
-                cluster_on_matrix=do_matrix_cluster,
-                k=k_val,
+                sort_by="mean",
+                ascending=False,
+                cluster_on_matrix=True,
                 clustering_algorithm=algo,
-                hierarchical_method=hierarchical_method,
                 eps=float(dbscan_eps),
                 min_samples=int(dbscan_min_samples),
                 power_transform_degree=float(power_transform_degree),
                 sigmoid_k=float(sigmoid_k),
             )
-
-            # Perform Clustering (Stats-based) if requested
-            if action_mode == "clustering":
-                stats = analyzer.cluster_stats(
-                    stats,
-                    int(k_clusters),
-                    metric=cluster_metric,
-                    threshold_n=float(cluster_threshold_n),
-                )
 
             # Store Data in State for this metric
             new_state[name] = {
@@ -433,7 +381,7 @@ def run_analysis(
                 "action_mode": action_mode,
                 "cluster_show_scores": cluster_show_scores,
                 "cluster_label_mode": cluster_label_mode,
-                "sort_by": sort_by,
+                "sort_by": "mean",
                 "selected_unit_idx": -1,
             }
 
