@@ -252,3 +252,25 @@ class HumanEyeColorMetric(MetricStrategy):
         b = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
 
         return torch.stack([L, a, b], dim=1)
+
+
+class CosineMetric(MetricStrategy):
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Computes Cosine Distance: 1 - Cosine Similarity.
+        Range [0, 2]. 0 = Identical direction/pattern.
+        Efficiently implemented via matrix multiplication.
+        """
+        # Flatten: (N, C, H, W) -> (N, D)
+        flat = patches.reshape(patches.shape[0], -1)
+
+        # Normalize rows (L2 norm) to create unit vectors
+        norm = torch.norm(flat, p=2, dim=1, keepdim=True)
+        flat_norm = flat / (norm + 1e-8)  # Avoid division by zero
+
+        # Similarity = A . B^T (for unit vectors)
+        similarity = torch.mm(flat_norm, flat_norm.t())
+
+        # Distance = 1 - Similarity
+        # Clamp ensures we don't get negative zeros or > 2 due to precision
+        return 1.0 - similarity.clamp(-1.0, 1.0)

@@ -6,19 +6,7 @@ import torch
 
 import visualizer
 from analyzer import PatchAnalyzer
-from metrics import (
-    CIELabMetric,
-    GradientColorMetric,
-    HistogramMetric,
-    HumanEyeColorMetric,
-    LabMomentsMetric,
-    MSEMetric,
-    PixelWiseColorMetric,
-    SSIMColorMixedMetric,
-    SSIMHalfMetric,
-    SSIMMetric,
-    TextureColorMetric,
-)
+from metrics import CIELabMetric, CosineMetric, HumanEyeColorMetric, SSIMMetric
 from processor import ImageProcessor
 
 
@@ -39,16 +27,8 @@ def main():
         type=str,
         choices=[
             "ssim",
-            "ssim_half",
-            "ssim_color",
-            "cielab",
-            "moments",
-            "texture",
-            "grad_color",
-            "hist",
-            "pixel_color",
             "human_eye",
-            "mse",
+            "cosine",
         ],
         default="human_eye",
         help="Comparison metric",
@@ -142,24 +122,10 @@ def main():
 
     if args.metric == "ssim":
         metric = SSIMMetric()
-    elif args.metric == "ssim_half":
-        metric = SSIMHalfMetric()
-    elif args.metric == "ssim_color":
-        metric = SSIMColorMixedMetric()
-    elif args.metric == "moments":
-        metric = LabMomentsMetric()
-    elif args.metric == "texture":
-        metric = TextureColorMetric()
-    elif args.metric == "grad_color":
-        metric = GradientColorMetric()
-    elif args.metric == "hist":
-        metric = HistogramMetric()
-    elif args.metric == "pixel_color":
-        metric = PixelWiseColorMetric()
     elif args.metric == "human_eye":
         metric = HumanEyeColorMetric()
-    elif args.metric == "mse":
-        metric = MSEMetric()
+    elif args.metric == "cosine":
+        metric = CosineMetric()
     else:
         metric = CIELabMetric()
 
