@@ -141,16 +141,17 @@ def create_ui(input_dir=None):
                         )
 
                 unit_size_presets = {
-                    "30x30 (Tiny)": (30, 30),
-                    "50x50 (Small)": (50, 50),
-                    "100x100 (Medium)": (100, 100),
-                    "150x150 (Large)": (150, 150),
-                    "200x200 (X-Large)": (200, 200),
-                    "250x250 (Huge)": (250, 250),
+                    "30x30": (30, 30),
+                    "50x50": (50, 50),
+                    "100x100": (100, 100),
+                    "150x150": (150, 150),
+                    "200x200": (200, 200),
+                    "250x250": (250, 250),
+                    "512x512": (512, 512),
                 }
                 unit_preset_input = gr.Radio(
                     choices=list(unit_size_presets.keys()),
-                    value="50x50 (Small)",
+                    value="50x50",
                     label="Unit Size Presets",
                 )
 
