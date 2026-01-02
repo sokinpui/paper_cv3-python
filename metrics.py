@@ -93,10 +93,12 @@ class HumanEyeColorMetric(MetricStrategy):
         blur_sigma: float = 0.8,
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         p_norm: float = 2.0,
+        explosion_k: float = 0.0,
     ):
         self.blur_sigma = blur_sigma
         self.weights = weights
         self.p_norm = p_norm
+        self.explosion_k = explosion_k
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -128,7 +130,17 @@ class HumanEyeColorMetric(MetricStrategy):
 
         # 3. Flatten and Compute Minkowski Distance (p-norm)
         flat_vec = oklab_blurred.reshape(patches.shape[0], -1)
-        dists = torch.cdist(flat_vec, flat_vec, p=self.p_norm)
+
+        if self.explosion_k > 0:
+            N = flat_vec.shape[0]
+            dists = torch.zeros((N, N), device=flat_vec.device, dtype=flat_vec.dtype)
+            for i in range(N):
+                # Pixel Explosion: sum(exp(k * |a - b|) - 1)
+                diff = torch.abs(flat_vec[i : i + 1] - flat_vec)
+                row_dist = torch.sum(torch.exp(self.explosion_k * diff) - 1, dim=1)
+                dists[i] = row_dist
+        else:
+            dists = torch.cdist(flat_vec, flat_vec, p=self.p_norm)
 
         return dists
 

@@ -62,6 +62,14 @@ def create_ui(input_dir=None):
                         label="Norm Degree (P-Value)",
                         info="2.0=Euclidean. Increase to >2.0 to suppress small distributed noise and highlight sharp deviations.",
                     )
+                    oklab_explosion_k_input = gr.Slider(
+                        minimum=0.0,
+                        maximum=20.0,
+                        value=0.0,
+                        step=0.5,
+                        label="Pixel Explosion (k)",
+                        info="Exponential sensitivity. 0=Off. High values make the distance explode for even single pixel differences.",
+                    )
 
                 with gr.Group(visible=False) as ssim_options:
                     ssim_k1_input = gr.Slider(
@@ -291,6 +299,7 @@ def create_ui(input_dir=None):
             ssim_k1_input,
             ssim_k2_input,
             oklab_p_norm_input,
+            oklab_explosion_k_input,
             ssim_alpha_input,
             ssim_beta_input,
             analysis_state,
