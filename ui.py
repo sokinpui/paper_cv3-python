@@ -159,13 +159,13 @@ def create_ui(input_dir=None):
                 }
                 unit_preset_input = gr.Radio(
                     choices=list(unit_size_presets.keys()),
-                    value="50x50",
+                    value="512x512",
                     label="Unit Size Presets",
                 )
 
                 with gr.Row():
-                    h_input = gr.Number(value=50, label="Unit Height", precision=0)
-                    w_input = gr.Number(value=50, label="Unit Width", precision=0)
+                    h_input = gr.Number(value=512, label="Unit Height", precision=0)
+                    w_input = gr.Number(value=512, label="Unit Width", precision=0)
 
                 with gr.Row():
                     overlap_input = gr.Slider(
