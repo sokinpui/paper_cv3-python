@@ -94,11 +94,13 @@ class HumanEyeColorMetric(MetricStrategy):
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         p_norm: float = 2.0,
         explosion_k: float = 0.0,
+        explosion_n: int = 1,
     ):
         self.blur_sigma = blur_sigma
         self.weights = weights
         self.p_norm = p_norm
         self.explosion_k = explosion_k
+        self.explosion_n = explosion_n
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -128,8 +130,12 @@ class HumanEyeColorMetric(MetricStrategy):
         else:
             oklab_blurred = oklab
 
-        # 3. Flatten and Compute Minkowski Distance (p-norm)
-        flat_vec = oklab_blurred.reshape(patches.shape[0], -1)
+        # 4. Area Pooling (nxn)
+        if self.explosion_n > 1:
+            oklab_blurred = F.avg_pool2d(oklab_blurred, kernel_size=self.explosion_n, stride=self.explosion_n)
+
+        # 5. Flatten and Compute Minkowski Distance (p-norm)
+        flat_vec = oklab_blurred.reshape(oklab_blurred.shape[0], -1)
 
         if self.explosion_k > 0:
             N = flat_vec.shape[0]

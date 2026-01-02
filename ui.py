@@ -70,6 +70,14 @@ def create_ui(input_dir=None):
                         label="Pixel Explosion (k)",
                         info="Exponential sensitivity. 0=Off. High values make the distance explode for even single pixel differences.",
                     )
+                    oklab_explosion_n_input = gr.Slider(
+                        minimum=1,
+                        maximum=32,
+                        value=1,
+                        step=1,
+                        label="Area Pooling (n x n)",
+                        info="Downsamples patches into n x n blocks before comparison. Reduces noise and computation time.",
+                    )
 
                 with gr.Group(visible=False) as ssim_options:
                     ssim_k1_input = gr.Slider(
@@ -299,6 +307,7 @@ def create_ui(input_dir=None):
             ssim_k1_input,
             ssim_k2_input,
             oklab_p_norm_input,
+            oklab_explosion_n_input,
             oklab_explosion_k_input,
             ssim_alpha_input,
             ssim_beta_input,

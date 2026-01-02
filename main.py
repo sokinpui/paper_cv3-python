@@ -103,6 +103,12 @@ def main():
         default=0.0,
         help="Sigmoid contrast factor (k). 0=Off. >0 applies sigmoid stretch to distances.",
     )
+    parser.add_argument(
+        "--explosion_n",
+        type=int,
+        default=1,
+        help="Area pooling size (n x n) for Oklab metric.",
+    )
 
     args = parser.parse_args()
 
@@ -123,7 +129,7 @@ def main():
     if args.metric == "ssim":
         metric = SSIMMetric()
     elif args.metric == "human_eye":
-        metric = HumanEyeColorMetric()
+        metric = HumanEyeColorMetric(explosion_n=args.explosion_n)
     elif args.metric == "cosine":
         metric = CosineMetric()
 

@@ -254,6 +254,7 @@ def run_analysis(
     ssim_k1,
     ssim_k2,
     oklab_p_norm,
+    oklab_explosion_n,
     oklab_explosion_k,
     ssim_alpha,
     ssim_beta,
@@ -339,6 +340,7 @@ def run_analysis(
                     blur_sigma=0.8,
                     weights=(1.0, 1.0, 1.0),
                     p_norm=float(oklab_p_norm),
+                    explosion_n=int(oklab_explosion_n),
                     explosion_k=float(oklab_explosion_k),
                 )
             else:
