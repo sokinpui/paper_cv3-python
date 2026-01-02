@@ -12,11 +12,7 @@ def generate_equation_markdown(
     power_transform,
     dbscan_eps,
     dbscan_min_samples,
-    oklab_blur,
     oklab_p,
-    oklab_wl,
-    oklab_wa,
-    oklab_wb,
     ssim_k1,
     ssim_k2,
     ssim_alpha,
@@ -67,8 +63,8 @@ def generate_equation_markdown(
     lines.append("**3. Metric Logic**")
     for m in selected_metrics:
         if m == "Oklab":
-            w_vec = f"[{oklab_wl:.1f}, {oklab_wa:.1f}, {oklab_wb:.1f}]"
-            sigma = f"{oklab_blur:.1f}"
+            w_vec = "[1.0, 1.0, 1.0]"
+            sigma = "0.8"
             p = f"{oklab_p:.1f}"
             lines.append("**Oklab**")
             params = f"\\quad \\text{{with }}\\sigma={sigma}, p={p}, \\mathbf{{W}}={w_vec}"

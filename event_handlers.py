@@ -253,10 +253,6 @@ def run_analysis(
     sigmoid_k,
     ssim_k1,
     ssim_k2,
-    oklab_blur_sigma,
-    oklab_w_l,
-    oklab_w_a,
-    oklab_w_b,
     oklab_p_norm,
     ssim_alpha,
     ssim_beta,
@@ -339,8 +335,8 @@ def run_analysis(
                 )
             elif name == "Oklab":
                 metric = MetricClass(
-                    blur_sigma=float(oklab_blur_sigma),
-                    weights=(float(oklab_w_l), float(oklab_w_a), float(oklab_w_b)),
+                    blur_sigma=0.8,
+                    weights=(1.0, 1.0, 1.0),
                     p_norm=float(oklab_p_norm),
                 )
             else:

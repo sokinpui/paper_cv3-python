@@ -55,14 +55,6 @@ def create_ui(input_dir=None):
                 )
 
                 with gr.Group(visible=True) as oklab_options:
-                    oklab_blur_sigma_input = gr.Slider(
-                        minimum=0.0,
-                        maximum=3.0,
-                        value=0.8,
-                        step=0.1,
-                        label="Oklab Blur Sigma",
-                        info="Blurs units before comparison. Higher values ignore fine details (like texture/noise) and focus on larger color regions. 0 = disabled.",
-                    )
                     oklab_p_norm_input = gr.Slider(
                         minimum=1.0,
                         maximum=10.0,
@@ -70,32 +62,6 @@ def create_ui(input_dir=None):
                         step=1.0,
                         label="Norm Degree (P-Value)",
                         info="2.0=Euclidean. Increase to >2.0 to suppress small distributed noise and highlight sharp deviations.",
-                    )
-
-                with gr.Row():
-                    oklab_w_l = gr.Slider(
-                        minimum=0.0,
-                        maximum=5.0,
-                        value=1.0,
-                        step=0.1,
-                        label="L Weight (Lightness)",
-                        info="Sensitivity to brightness changes. Higher = more sensitive.",
-                    )
-                    oklab_w_a = gr.Slider(
-                        minimum=0.0,
-                        maximum=5.0,
-                        value=1.0,
-                        step=0.1,
-                        label="a Weight (Green-Red)",
-                        info="Sensitivity to Green/Red shifts. Higher = more sensitive.",
-                    )
-                    oklab_w_b = gr.Slider(
-                        minimum=0.0,
-                        maximum=5.0,
-                        value=1.0,
-                        step=0.1,
-                        label="b Weight (Blue-Yellow)",
-                        info="Sensitivity to Blue/Yellow shifts. Higher = more sensitive.",
                     )
 
                 with gr.Group(visible=False) as ssim_options:
@@ -327,10 +293,6 @@ def create_ui(input_dir=None):
             sigmoid_k_input,
             ssim_k1_input,
             ssim_k2_input,
-            oklab_blur_sigma_input,
-            oklab_w_l,
-            oklab_w_a,
-            oklab_w_b,
             oklab_p_norm_input,
             ssim_alpha_input,
             ssim_beta_input,
@@ -373,11 +335,7 @@ def create_ui(input_dir=None):
             power_transform_input,
             dbscan_eps_input,
             dbscan_min_input,
-            oklab_blur_sigma_input,
             oklab_p_norm_input,
-            oklab_w_l,
-            oklab_w_a,
-            oklab_w_b,
             ssim_k1_input,
             ssim_k2_input,
             ssim_alpha_input,
