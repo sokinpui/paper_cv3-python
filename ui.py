@@ -13,7 +13,6 @@ from event_handlers import (
 from ui_helpers import (
     calculate_vector_distance,
     clear_vector_inputs,
-    generate_equation_markdown,
 )
 
 # Compatibility for older Gradio versions (Pre-5.0)
@@ -222,9 +221,6 @@ def create_ui(input_dir=None):
                 )
 
             with gr.Column(scale=3):
-                # Equation Visualizer
-                equation_vis = gr.Markdown()
-
                 gr.Markdown("### 📊 Analysis Results (By Distance Function)")
 
                 # Dynamically create output rows for each metric
@@ -326,31 +322,6 @@ def create_ui(input_dir=None):
                 fn=create_click_handler(name),
                 inputs=[analysis_state, vc_a, vc_b],
                 outputs=[vc_a, vc_b, vc_res, unit_inspector_gallery, img_comp],
-            )
-
-        # Update Equation Visualizer
-        vis_inputs = [
-            distance_funcs_input,
-            sigmoid_k_input,
-            power_transform_input,
-            dbscan_eps_input,
-            dbscan_min_input,
-            oklab_p_norm_input,
-            ssim_k1_input,
-            ssim_k2_input,
-            ssim_alpha_input,
-            ssim_beta_input,
-        ]
-
-        # Initialize on load
-        demo.load(
-            fn=generate_equation_markdown, inputs=vis_inputs, outputs=equation_vis
-        )
-
-        # Update on any change
-        for inp in vis_inputs:
-            inp.change(
-                fn=generate_equation_markdown, inputs=vis_inputs, outputs=equation_vis
             )
 
     return demo
