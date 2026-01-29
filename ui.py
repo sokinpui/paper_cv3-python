@@ -10,10 +10,7 @@ from event_handlers import (
     toggle_annotations,
     update_annotation_settings,
 )
-from ui_helpers import (
-    calculate_vector_distance,
-    clear_vector_inputs,
-)
+from ui_helpers import calculate_vector_distance, clear_vector_inputs
 
 # Compatibility for older Gradio versions (Pre-5.0)
 if not hasattr(gr, "Modal"):
@@ -64,7 +61,7 @@ def create_ui(input_dir=None):
                     )
                     oklab_explosion_k_input = gr.Slider(
                         minimum=0.0,
-                        maximum=20.0,
+                        maximum=100.0,
                         value=0.0,
                         step=0.5,
                         label="Pixel Explosion (k)",
