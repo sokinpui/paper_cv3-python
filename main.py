@@ -5,6 +5,7 @@ import sys
 import torch
 
 import visualizer
+from globals import DEVICE, get_device_name
 from analyzer import PatchAnalyzer
 from metrics import CosineMetric, HumanEyeColorMetric, SSIMMetric
 from processor import ImageProcessor
@@ -113,15 +114,8 @@ def main():
     args = parser.parse_args()
 
     # 1. Setup Device
-    if not torch.cuda.is_available():
-        print(
-            "Error: CUDA is not available. This program requires an NVIDIA GPU.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    device = torch.device("cuda")
-    print(f"Using Device: {torch.cuda.get_device_name(0)}")
+    device = DEVICE
+    print(f"Using Device: {get_device_name(device)}")
 
     # 2. Initialize Components
     processor = ImageProcessor(device)

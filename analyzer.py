@@ -134,7 +134,7 @@ class PatchAnalyzer:
 
         # 2. Mask diagonal (self-comparison) to avoid skewing stats
         # We set diagonal to NaN so we can ignore it in stats
-        mask = torch.eye(N, device=patches.device).bool()
+        mask = torch.eye(N, device=matrix.device).bool()
         matrix.masked_fill_(mask, float("nan"))
 
         # 3. Calculate Statistics per Unit (Row-wise)
