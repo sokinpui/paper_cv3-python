@@ -111,6 +111,10 @@ def get_k_distances(matrix: torch.Tensor, k: int) -> np.ndarray:
     if k < 1:
         return np.zeros(matrix.shape[0])
 
+    # Ensure k is within bounds
+    N = matrix.shape[0]
+    k = min(k, N - 1)
+
     dist_mat = matrix.detach().cpu().numpy()
 
     # Sort each row (distances from point i to all other points)
@@ -136,7 +140,7 @@ def find_dbscan_eps(matrix: torch.Tensor, min_samples: int) -> float:
     if N < 2:
         return 0.0
 
-    k = max(1, min_samples - 1)
+    k = min(N - 1, max(1, min_samples - 1))
     k_distances = get_k_distances(matrix, k)
 
     x_coords = np.arange(N)
@@ -149,7 +153,8 @@ def find_dbscan_eps(matrix: torch.Tensor, min_samples: int) -> float:
 
     denominator = np.sqrt(A**2 + B**2)
     if np.isclose(denominator, 0.0):
-        return np.median(y_coords)  # Flat line, use median
+        val = np.median(y_coords)
+        return float(val) if val > 0 else 1e-6
 
     numerator = np.abs(A * x_coords + B * y_coords + C)
     distances = numerator / denominator
@@ -157,4 +162,10 @@ def find_dbscan_eps(matrix: torch.Tensor, min_samples: int) -> float:
     # Find the point with the maximum distance (the knee)
     knee_index = np.argmax(distances)
 
+    eps = float(y_coords[knee_index])
+    if eps <= 0.0:
+        # Fallback to a tiny value if knee is at 0 but we have units to compare
+        return 1e-6
+
+    return eps
     return float(y_coords[knee_index])

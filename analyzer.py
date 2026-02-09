@@ -119,17 +119,12 @@ class PatchAnalyzer:
 
         if cluster_on_matrix:
             if clustering_algorithm == "dbscan":
-                # Guard Clause: eps must be > 0.0 now
                 if calculated_eps <= 0.0:
-                    raise ValueError(
-                        "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
-                    )
+                    calculated_eps = 1e-6
                 matrix_labels = dbscan(matrix, calculated_eps, min_samples)
             elif clustering_algorithm == "dbscan2":
                 if calculated_eps <= 0.0:
-                    raise ValueError(
-                        "DBSCAN eps could not be automatically determined or is invalid (<= 0.0)."
-                    )
+                    calculated_eps = 1e-6
                 matrix_labels = dbscan2(matrix, calculated_eps, min_samples)
 
         # 2. Mask diagonal (self-comparison) to avoid skewing stats

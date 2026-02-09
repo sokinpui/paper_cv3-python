@@ -276,13 +276,7 @@ def run_analysis(
     json_idx = num_metrics * 3
     state_idx = num_metrics * 3 + 1
 
-    # Fill with None/Empty strings
-    # Structure: [Header, Image, Perf] per metric
-    # + [JSON] + [State]
-    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + [
-        "",
-        current_state,
-    ] + [gr.update(value=None)] * num_metrics
+    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + ["", current_state]
 
     if image_path is None:
         current_outputs[json_idx] = "Please upload an image."
