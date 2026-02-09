@@ -2,7 +2,6 @@ from typing import Tuple
 
 import torch
 import torch.nn.functional as F
-from torchvision.transforms import GaussianBlur
 
 
 class MetricStrategy:
@@ -90,13 +89,11 @@ class SSIMMetric(MetricStrategy):
 class HumanEyeColorMetric(MetricStrategy):
     def __init__(
         self,
-        blur_sigma: float = 0.8,
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         p_norm: float = 2.0,
         explosion_k: float = 0.0,
         explosion_n: int = 1,
     ):
-        self.blur_sigma = blur_sigma
         self.weights = weights
         self.p_norm = p_norm
         self.explosion_k = explosion_k
@@ -105,9 +102,6 @@ class HumanEyeColorMetric(MetricStrategy):
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
         Uses Oklab color space (perceptually uniform) + Gaussian Blur.
-        Oklab is currently the state-of-the-art for simple Euclidean perceptual color distance.
-        The blur mimics the human eye's tendency to ignore high-frequency pixel noise
-        and focus on regional color patches.
         """
         # 1. Convert to Oklab
         oklab = self._rgb_to_oklab(patches)  # (N, 3, H, W)
@@ -121,14 +115,7 @@ class HumanEyeColorMetric(MetricStrategy):
             ).view(1, 3, 1, 1)
             oklab = oklab * w_tensor
 
-        # 3. Blur slightly to simulate human visual area integration
-        if self.blur_sigma > 0:
-            # Kernel size must be odd. A common choice is 2*ceil(3*sigma)+1
-            kernel_size = 2 * int(3.0 * self.blur_sigma + 0.5) + 1
-            blur = GaussianBlur(kernel_size, sigma=self.blur_sigma)
-            oklab_blurred = blur(oklab)
-        else:
-            oklab_blurred = oklab
+        oklab_blurred = oklab
 
         # 4. Area Pooling (nxn)
         if self.explosion_n > 1:

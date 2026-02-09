@@ -337,7 +337,6 @@ def run_analysis(
                 )
             elif name == "Oklab":
                 metric = MetricClass(
-                    blur_sigma=0.8,
                     weights=(1.0, 1.0, 1.0),
                     p_norm=float(oklab_p_norm),
                     explosion_n=int(oklab_explosion_n),
