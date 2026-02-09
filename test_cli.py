@@ -1,17 +1,18 @@
 import sys
-import torch
+
 import numpy as np
+import torch
 import torch.nn.functional as F
 
 from globals import DEVICE
 from metrics import HumanEyeColorMetric
+
 
 class OklabVectorEngine:
     def __init__(self, size=512):
         self.size = size
         self.metric = HumanEyeColorMetric()
         self.pooling_n = 1
-        self.p_norm = 2.0
         self.explosion_k = 0.0
         self.use_dim_scale = False
         self.reset()
@@ -22,7 +23,7 @@ class OklabVectorEngine:
 
     def draw(self, target, x, y):
         canvas = self.canvas_a if target.lower() == "a" else self.canvas_b
-        
+
         # Bounds check
         if not (0 <= x < self.size and 0 <= y < self.size):
             print(f"Error: Coordinates ({x}, {y}) out of range [0-{self.size-1}]")
@@ -33,20 +34,25 @@ class OklabVectorEngine:
         print(f"Drew dot on {target.upper()} at ({x}, {y})")
 
     def _process(self, canvas_np):
-        img_t = torch.from_numpy(canvas_np).permute(2, 0, 1).float().unsqueeze(0).to(DEVICE) / 255.0
-        
+        img_t = (
+            torch.from_numpy(canvas_np).permute(2, 0, 1).float().unsqueeze(0).to(DEVICE)
+            / 255.0
+        )
+
         oklab = self.metric._rgb_to_oklab(img_t)
-        
+
         if self.pooling_n > 1:
-            oklab = F.avg_pool2d(oklab, kernel_size=self.pooling_n, stride=self.pooling_n)
-            
+            oklab = F.avg_pool2d(
+                oklab, kernel_size=self.pooling_n, stride=self.pooling_n
+            )
+
         return oklab.reshape(-1)
 
     def get_vector_summary(self, target):
         canvas = self.canvas_a if target.lower() == "a" else self.canvas_b
         vec = self._process(canvas)
         vec_np = vec.detach().cpu().numpy()
-        
+
         summary = [
             f"--- Vector {target.upper()} ---",
             f"Shape: {vec_np.shape}",
@@ -54,44 +60,51 @@ class OklabVectorEngine:
             f"Std:   {vec_np.std():.6f}",
             f"Min:   {vec_np.min():.6f}",
             f"Max:   {vec_np.max():.6f}",
-            f"Snippet: {vec_np[:5]} ... {vec_np[-5:]}"
+            f"Snippet: {vec_np[:5]} ... {vec_np[-5:]}",
         ]
         return "\n".join(summary), vec
 
     def get_final_distance(self):
         _, vA = self.get_vector_summary("a")
         _, vB = self.get_vector_summary("b")
-        
+
         diff = torch.abs(vA - vB)
-        scale = (self.size * self.size) if self.use_dim_scale else 1.0
+
+        # Coefficient based on total pixels (Area: Width x Height)
+        area_coefficient = self.size * self.size
+        scale = area_coefficient if self.use_dim_scale else 1.0
 
         if self.explosion_k > 0:
             dist = torch.sum(torch.exp(self.explosion_k * diff) - 1)
             return (dist * scale).item()
-        
-        # Minkowski Distance with optional scaling
-        # Note: Scaling is applied to the sum before the root to treat it as a per-unit coefficient
-        sum_pow = torch.sum(torch.pow(diff, self.p_norm))
-        dist = torch.pow(sum_pow * scale, 1/self.p_norm)
-        
+
+        # Euclidean Distance scaled by resolution to maintain resolution-independent magnitude
+        sum_pow = torch.sum(torch.pow(diff, 2.0))
+        dist = (
+            torch.pow(sum_pow * scale, 0.5)
+            if self.use_dim_scale
+            else torch.pow(sum_pow, 0.5)
+        )
+
         return dist.item()
 
     def analyze(self):
         _, vA = self.get_vector_summary("a")
         _, vB = self.get_vector_summary("b")
-        
+
         dist = self.get_final_distance()
         vD = vA - vB
         vD_np = vD.detach().cpu().numpy()
-        
+
         res = [
             "--- Distance Analysis ---",
             f"Scale Coefficient: {self.size * self.size if self.use_dim_scale else 1.0}",
             f"Final Distance: {dist:.6f}",
             f"L2 Norm of Diff (vD): {torch.norm(vD).item():.6f}",
-            f"vD Snippet: {vD_np[:5]} ... {vD_np[-5:]}"
+            f"vD Snippet: {vD_np[:5]} ... {vD_np[-5:]}",
         ]
         return "\n".join(res)
+
 
 def print_help():
     print("\nAvailable Commands:")
@@ -101,12 +114,12 @@ def print_help():
     print("  draw b <x> <y>     : Draw a dot on Canvas B (0-511)")
     print("  run                : Run distance analysis and show vD")
     print("  d / distance       : Print the final distance value")
-    print("  set p <val>        : Set Minkowski p-norm (default 2.0)")
     print("  set k <val>        : Set Pixel Explosion k (default 0.0)")
     print("  set scale <on|off> : Apply image dimension coefficient (512x512)")
     print("  reset              : Clear both canvases")
     print("  help               : Show this help")
     print("  exit / quit        : Close the tester")
+
 
 def main():
     engine = OklabVectorEngine(size=512)
@@ -145,10 +158,7 @@ def main():
             if cmd == "set" and len(parts) > 2:
                 try:
                     val = float(parts[2])
-                    if parts[1] == "p":
-                        engine.p_norm = val
-                        print(f"p-norm set to {val}")
-                    elif parts[1] == "k":
+                    if parts[1] == "k":
                         engine.explosion_k = val
                         print(f"explosion_k set to {val}")
                     continue
@@ -156,8 +166,10 @@ def main():
                     pass
 
                 if parts[1] == "scale" and len(parts) > 2:
-                    engine.use_dim_scale = (parts[2] == "on")
-                    print(f"Dimension scaling {'Enabled' if engine.use_dim_scale else 'Disabled'}")
+                    engine.use_dim_scale = parts[2] == "on"
+                    print(
+                        f"Dimension scaling {'Enabled' if engine.use_dim_scale else 'Disabled'}"
+                    )
                     continue
 
             if cmd in ["p", "print"]:
@@ -186,6 +198,7 @@ def main():
             break
         except Exception as e:
             print(f"An error occurred: {e}")
+
 
 if __name__ == "__main__":
     main()

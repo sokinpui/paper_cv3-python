@@ -51,14 +51,6 @@ def create_ui(input_dir=None):
                 )
 
                 with gr.Group(visible=True) as oklab_options:
-                    oklab_p_norm_input = gr.Slider(
-                        minimum=1.0,
-                        maximum=10.0,
-                        value=2.0,
-                        step=1.0,
-                        label="Norm Degree (P-Value)",
-                        info="2.0=Euclidean. Increase to >2.0 to suppress small distributed noise and highlight sharp deviations.",
-                    )
                     oklab_explosion_k_input = gr.Slider(
                         minimum=0.0,
                         maximum=100.0,
@@ -303,7 +295,6 @@ def create_ui(input_dir=None):
             sigmoid_k_input,
             ssim_k1_input,
             ssim_k2_input,
-            oklab_p_norm_input,
             oklab_explosion_n_input,
             oklab_explosion_k_input,
             ssim_alpha_input,

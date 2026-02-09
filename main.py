@@ -166,7 +166,6 @@ def main():
 
         top_units, _, _ = analyzer.analyze(
             patches,
-            grid_shape,
             top_n=args.top_n,
             sort_by=args.sort_by,
             ascending=ascending,

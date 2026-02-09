@@ -253,7 +253,6 @@ def run_analysis(
     sigmoid_k,
     ssim_k1,
     ssim_k2,
-    oklab_p_norm,
     oklab_explosion_n,
     oklab_explosion_k,
     ssim_alpha,
@@ -338,7 +337,6 @@ def run_analysis(
             elif name == "Oklab":
                 metric = MetricClass(
                     weights=(1.0, 1.0, 1.0),
-                    p_norm=float(oklab_p_norm),
                     explosion_n=int(oklab_explosion_n),
                     explosion_k=float(oklab_explosion_k),
                 )

@@ -90,12 +90,10 @@ class HumanEyeColorMetric(MetricStrategy):
     def __init__(
         self,
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-        p_norm: float = 2.0,
         explosion_k: float = 0.0,
         explosion_n: int = 1,
     ):
         self.weights = weights
-        self.p_norm = p_norm
         self.explosion_k = explosion_k
         self.explosion_n = explosion_n
 
@@ -119,7 +117,9 @@ class HumanEyeColorMetric(MetricStrategy):
 
         # 4. Area Pooling (nxn)
         if self.explosion_n > 1:
-            oklab_blurred = F.avg_pool2d(oklab_blurred, kernel_size=self.explosion_n, stride=self.explosion_n)
+            oklab_blurred = F.avg_pool2d(
+                oklab_blurred, kernel_size=self.explosion_n, stride=self.explosion_n
+            )
 
         # 5. Flatten and Compute Minkowski Distance (p-norm)
         flat_vec = oklab_blurred.reshape(oklab_blurred.shape[0], -1)
@@ -133,7 +133,7 @@ class HumanEyeColorMetric(MetricStrategy):
                 row_dist = torch.sum(torch.exp(self.explosion_k * diff) - 1, dim=1)
                 dists[i] = row_dist
         else:
-            dists = torch.cdist(flat_vec, flat_vec, p=self.p_norm)
+            dists = torch.cdist(flat_vec, flat_vec, p=2.0)
 
         return dists
 
@@ -153,9 +153,9 @@ class HumanEyeColorMetric(MetricStrategy):
         s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
 
         # 3. Non-linearity (Cube root) + LMS to Oklab
-        l_ = torch.pow(l.clamp(min=1e-8), 1 / 3)
-        m_ = torch.pow(m.clamp(min=1e-8), 1 / 3)
-        s_ = torch.pow(s.clamp(min=1e-8), 1 / 3)
+        l_ = torch.pow(l.clamp(min=1e-12), 1 / 3)
+        m_ = torch.pow(m.clamp(min=1e-12), 1 / 3)
+        s_ = torch.pow(s.clamp(min=1e-12), 1 / 3)
 
         L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_
         a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_
