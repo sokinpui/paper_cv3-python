@@ -80,11 +80,7 @@ class OklabVectorEngine:
 
         # Euclidean Distance scaled by resolution to maintain resolution-independent magnitude
         sum_pow = torch.sum(torch.pow(diff, 2.0))
-        dist = (
-            torch.pow(sum_pow * scale, 0.5)
-            if self.use_dim_scale
-            else torch.pow(sum_pow, 0.5)
-        )
+        dist = torch.pow(sum_pow, 0.5) * scale
 
         return dist.item()
 
