@@ -13,6 +13,7 @@ class OklabVectorEngine:
         self.pooling_n = 1
         self.p_norm = 2.0
         self.explosion_k = 0.0
+        self.use_dim_scale = False
         self.reset()
 
     def reset(self):
@@ -28,7 +29,7 @@ class OklabVectorEngine:
             return
 
         # Draw 3x3 dot
-        canvas[max(0, y-1):y+2, max(0, x-1):x+2] = 0
+        canvas[y, x] = 0
         print(f"Drew dot on {target.upper()} at ({x}, {y})")
 
     def _process(self, canvas_np):
@@ -61,11 +62,19 @@ class OklabVectorEngine:
         _, vA = self.get_vector_summary("a")
         _, vB = self.get_vector_summary("b")
         
+        diff = torch.abs(vA - vB)
+        scale = (self.size * self.size) if self.use_dim_scale else 1.0
+
         if self.explosion_k > 0:
-            diff = torch.abs(vA - vB)
-            return torch.sum(torch.exp(self.explosion_k * diff) - 1).item()
+            dist = torch.sum(torch.exp(self.explosion_k * diff) - 1)
+            return (dist * scale).item()
         
-        return torch.pow(torch.sum(torch.pow(torch.abs(vA - vB), self.p_norm)), 1/self.p_norm).item()
+        # Minkowski Distance with optional scaling
+        # Note: Scaling is applied to the sum before the root to treat it as a per-unit coefficient
+        sum_pow = torch.sum(torch.pow(diff, self.p_norm))
+        dist = torch.pow(sum_pow * scale, 1/self.p_norm)
+        
+        return dist.item()
 
     def analyze(self):
         _, vA = self.get_vector_summary("a")
@@ -77,7 +86,8 @@ class OklabVectorEngine:
         
         res = [
             "--- Distance Analysis ---",
-            f"Minkowski Distance (p={self.p_norm}): {dist.item():.6f}",
+            f"Scale Coefficient: {self.size * self.size if self.use_dim_scale else 1.0}",
+            f"Final Distance: {dist:.6f}",
             f"L2 Norm of Diff (vD): {torch.norm(vD).item():.6f}",
             f"vD Snippet: {vD_np[:5]} ... {vD_np[-5:]}"
         ]
@@ -93,6 +103,7 @@ def print_help():
     print("  d / distance       : Print the final distance value")
     print("  set p <val>        : Set Minkowski p-norm (default 2.0)")
     print("  set k <val>        : Set Pixel Explosion k (default 0.0)")
+    print("  set scale <on|off> : Apply image dimension coefficient (512x512)")
     print("  reset              : Clear both canvases")
     print("  help               : Show this help")
     print("  exit / quit        : Close the tester")
@@ -142,7 +153,11 @@ def main():
                         print(f"explosion_k set to {val}")
                     continue
                 except ValueError:
-                    print("Error: Value must be a number.")
+                    pass
+
+                if parts[1] == "scale" and len(parts) > 2:
+                    engine.use_dim_scale = (parts[2] == "on")
+                    print(f"Dimension scaling {'Enabled' if engine.use_dim_scale else 'Disabled'}")
                     continue
 
             if cmd in ["p", "print"]:
