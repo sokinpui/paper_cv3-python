@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import time
@@ -268,15 +267,14 @@ def run_analysis(
     }
     action_mode = mode_map.get(action_mode_ui, "clustering_dbscan")
 
-    # Initialize output structure: [Img, Perf] per metric + [JSON]
+    # Initialize output structure: [Img, Perf] per metric
     num_metrics = len(METRICS_CONFIG)
-    json_idx = num_metrics * 3
-    state_idx = num_metrics * 3 + 1
+    state_idx = num_metrics * 3
 
-    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + ["", current_state]
+    current_outputs = [gr.update(visible=False)] * (num_metrics * 3) + [current_state]
 
     if image_path is None:
-        current_outputs[json_idx] = "Please upload an image."
+        gr.Warning("Please upload an image.")
         yield tuple(current_outputs)
         return
 
@@ -304,8 +302,6 @@ def run_analysis(
         t_det_start = time.time()
 
         actual_top_n = 999999
-
-        all_stats_collection = []
 
         for i, (name, MetricClass) in enumerate(METRICS_CONFIG):
             base_idx = i * 3
@@ -394,13 +390,6 @@ def run_analysis(
             current_outputs[base_idx + 1] = gr.update(visible=True, value=result_img)
             current_outputs[base_idx + 2] = gr.update(visible=True, value=perf_text)
 
-            # Keep top 1 stat for JSON just to show something valid
-            all_stats_collection.extend([s.to_dict() for s in stats[:1]])
-
-            # Update JSON (accumulated)
-            current_outputs[json_idx] = json.dumps(
-                all_stats_collection[:actual_top_n], indent=4
-            )
             current_outputs[state_idx] = new_state
 
             # Yield current state
@@ -410,6 +399,5 @@ def run_analysis(
         import traceback
 
         traceback.print_exc()
-        # Yield error in the JSON field
-        current_outputs[json_idx] = f"Error: {str(e)}"
+        gr.Error(f"Analysis failed: {str(e)}")
         yield tuple(current_outputs)

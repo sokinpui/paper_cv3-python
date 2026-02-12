@@ -271,7 +271,6 @@ def create_ui(input_dir=None):
                 )
 
                 # perf_output = gr.Markdown() # Removed global perf
-                json_output = gr.Code(language="json", label="Statistics")
                 analysis_state = gr.State({})  # Store matrix data per session
 
         # Common inputs for all buttons
@@ -293,7 +292,7 @@ def create_ui(input_dir=None):
             oklab_threshold_input,
             analysis_state,
         ]
-        common_outputs = metric_outputs + [json_output, analysis_state]
+        common_outputs = metric_outputs + [analysis_state]
 
         btn_run.click(
             fn=run_analysis,
