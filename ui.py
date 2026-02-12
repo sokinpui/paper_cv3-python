@@ -11,6 +11,7 @@ from event_handlers import (
     update_annotation_settings,
 )
 from ui_helpers import calculate_vector_distance, clear_vector_inputs
+from utils import calculate_oklab_range
 
 # Compatibility for older Gradio versions (Pre-5.0)
 if not hasattr(gr, "Modal"):
@@ -52,6 +53,16 @@ def create_ui(input_dir=None):
 
                 with gr.Group(visible=True) as oklab_options:
                     gr.Markdown("Oklab uses perceptually uniform color space.")
+                    initial_max = calculate_oklab_range(512, 512)
+
+                    oklab_threshold_input = gr.Slider(
+                        minimum=0.0,
+                        maximum=initial_max,
+                        value=initial_max,
+                        step=0.1,
+                        label="Oklab Distance Threshold (x)",
+                        info="If distance > x, distance = distance * Max_Distance",
+                    )
 
                 with gr.Group(visible=False) as ssim_options:
                     ssim_k1_input = gr.Slider(
@@ -168,6 +179,23 @@ def create_ui(input_dir=None):
                     outputs=[h_input, w_input],
                 )
 
+                def update_oklab_max(h, w):
+                    if not h or not w:
+                        return gr.update()
+                    max_dist = calculate_oklab_range(h, w)
+                    return gr.update(maximum=max_dist, value=max_dist)
+
+                h_input.change(
+                    fn=update_oklab_max,
+                    inputs=[h_input, w_input],
+                    outputs=oklab_threshold_input,
+                )
+                w_input.change(
+                    fn=update_oklab_max,
+                    inputs=[h_input, w_input],
+                    outputs=oklab_threshold_input,
+                )
+
                 # DBSCAN Settings
                 dbscan_eps_input = gr.Number(
                     value=0.0,
@@ -262,6 +290,7 @@ def create_ui(input_dir=None):
             ssim_k2_input,
             ssim_alpha_input,
             ssim_beta_input,
+            oklab_threshold_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [json_output, analysis_state]

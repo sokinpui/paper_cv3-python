@@ -253,6 +253,7 @@ def run_analysis(
     ssim_k2,
     ssim_alpha,
     ssim_beta,
+    oklab_threshold,
     current_state,
 ):
     """
@@ -327,6 +328,7 @@ def run_analysis(
             elif name == "Oklab":
                 metric = MetricClass(
                     weights=(1.0, 1.0, 1.0),
+                    threshold=float(oklab_threshold),
                 )
             else:
                 metric = MetricClass()

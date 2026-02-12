@@ -3,6 +3,8 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
+from utils import calculate_oklab_range
+
 
 class MetricStrategy:
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
@@ -86,12 +88,14 @@ class SSIMMetric(MetricStrategy):
         return ssim_matrix
 
 
-class HumanEyeColorMetric(MetricStrategy):
+class OklabMetric(MetricStrategy):
     def __init__(
         self,
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        threshold: float = float("inf"),
     ):
         self.weights = weights
+        self.threshold = threshold
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -114,6 +118,17 @@ class HumanEyeColorMetric(MetricStrategy):
         # 4. Flatten and Compute Euclidean Distance
         flat_vec = oklab_blurred.reshape(oklab_blurred.shape[0], -1)
         dists = torch.cdist(flat_vec, flat_vec, p=2.0)
+
+        if self.threshold < float("inf"):
+            _, _, H, W = patches.shape
+            # 1^2 + 0.8^2 + 0.8^2 = 2.28
+            # range of L = [0, 1]
+            # range of a = [-0.4, 0.4]
+            # range of b = [-0.4, 0.4]
+            # maximum distance between two units are sqrt(2.28 x Height in pixel x Weight in pixel)
+            # new_dist = dist x (maximum distance ^ 2)
+            multipler = calculate_oklab_range(H, W)
+            dists = torch.where(dists > self.threshold, dists * multipler, dists)
 
         return dists
 

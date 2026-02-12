@@ -1,8 +1,8 @@
-from metrics import CosineMetric, HumanEyeColorMetric, SSIMMetric
+from metrics import CosineMetric, OklabMetric, SSIMMetric
 
 # 0. Configuration
 METRICS_CONFIG = [
-    ("Oklab", HumanEyeColorMetric),
+    ("Oklab", OklabMetric),
     ("SSIM", SSIMMetric),
     ("Cosine", CosineMetric),
 ]

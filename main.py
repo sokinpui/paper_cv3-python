@@ -5,9 +5,9 @@ import sys
 import torch
 
 import visualizer
-from globals import DEVICE, get_device_name
 from analyzer import PatchAnalyzer
-from metrics import CosineMetric, HumanEyeColorMetric, SSIMMetric
+from globals import DEVICE, get_device_name
+from metrics import CosineMetric, OklabMetric, SSIMMetric
 from processor import ImageProcessor
 
 
@@ -105,7 +105,7 @@ def main():
     if args.metric == "ssim":
         metric = SSIMMetric()
     elif args.metric == "human_eye":
-        metric = HumanEyeColorMetric()
+        metric = OklabMetric()
     elif args.metric == "cosine":
         metric = CosineMetric()
 

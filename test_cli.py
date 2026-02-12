@@ -5,13 +5,13 @@ import torch
 import torch.nn.functional as F
 
 from globals import DEVICE
-from metrics import HumanEyeColorMetric
+from metrics import OklabMetric
 
 
 class OklabVectorEngine:
     def __init__(self, size=512):
         self.size = size
-        self.metric = HumanEyeColorMetric()
+        self.metric = OklabMetric()
         self.use_dim_scale = False
         self.reset()
 
