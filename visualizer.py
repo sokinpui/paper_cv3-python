@@ -115,12 +115,12 @@ def create_cluster_map(
     rows, cols = grid_shape
     stride_h, stride_w = strides
 
-    # Distinct colors for clusters (BGR)
+    # Distinct colors for clusters (RGB)
     # K is usually small, define a palette
     palette = [
         (0, 255, 0),  # Green
-        (0, 0, 255),  # Red
-        (255, 0, 0),  # Blue
+        (255, 0, 0),  # Red
+        (0, 0, 255),  # Blue
         (0, 255, 255),  # Yellow
         (255, 0, 255),  # Magenta
         (255, 255, 0),  # Cyan

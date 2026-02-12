@@ -56,7 +56,7 @@ def _redraw_metric_image(image_tensor, metric_data, selected_unit_idx=-1):
     height, width = metric_data["unit_size"]
     label_mode = metric_data.get("cluster_label_mode", "1-NN Distance")
 
-    return visualizer.create_cluster_map(
+    result_img = visualizer.create_cluster_map(
         image_tensor,
         stats,
         grid_shape,
@@ -67,3 +67,10 @@ def _redraw_metric_image(image_tensor, metric_data, selected_unit_idx=-1):
         selected_unit_index=selected_unit_idx,
         label_mode=label_mode,
     )
+
+    # Prepare original image for side-by-side view
+    temp_tensor = image_tensor.squeeze(0) if image_tensor.dim() == 4 else image_tensor
+    original_img = temp_tensor.permute(1, 2, 0).cpu().numpy()
+    original_img = (original_img * 255).clip(0, 255).astype(np.uint8)
+
+    return visualizer.create_side_by_side_image(original_img, result_img)
