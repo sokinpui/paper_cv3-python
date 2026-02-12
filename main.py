@@ -92,12 +92,6 @@ def main():
         action="store_true",
         help="Convert image to grayscale before processing",
     )
-    parser.add_argument(
-        "--explosion_n",
-        type=int,
-        default=1,
-        help="Area pooling size (n x n) for Oklab metric.",
-    )
 
     args = parser.parse_args()
 
@@ -111,7 +105,7 @@ def main():
     if args.metric == "ssim":
         metric = SSIMMetric()
     elif args.metric == "human_eye":
-        metric = HumanEyeColorMetric(explosion_n=args.explosion_n)
+        metric = HumanEyeColorMetric()
     elif args.metric == "cosine":
         metric = CosineMetric()
 

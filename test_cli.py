@@ -12,8 +12,6 @@ class OklabVectorEngine:
     def __init__(self, size=512):
         self.size = size
         self.metric = HumanEyeColorMetric()
-        self.pooling_n = 1
-        self.explosion_k = 0.0
         self.use_dim_scale = False
         self.reset()
 
@@ -40,11 +38,6 @@ class OklabVectorEngine:
         )
 
         oklab = self.metric._rgb_to_oklab(img_t)
-
-        if self.pooling_n > 1:
-            oklab = F.avg_pool2d(
-                oklab, kernel_size=self.pooling_n, stride=self.pooling_n
-            )
 
         return oklab.reshape(-1)
 
@@ -73,10 +66,6 @@ class OklabVectorEngine:
         # Coefficient based on total pixels (Area: Width x Height)
         area_coefficient = self.size * self.size
         scale = area_coefficient if self.use_dim_scale else 1.0
-
-        if self.explosion_k > 0:
-            dist = torch.sum(torch.exp(self.explosion_k * diff) - 1)
-            return (dist * scale).item()
 
         # Euclidean Distance scaled by resolution to maintain resolution-independent magnitude
         sum_pow = torch.sum(torch.pow(diff, 2.0))
@@ -110,7 +99,6 @@ def print_help():
     print("  draw b <x> <y>     : Draw a dot on Canvas B (0-511)")
     print("  run                : Run distance analysis and show vD")
     print("  d / distance       : Print the final distance value")
-    print("  set k <val>        : Set Pixel Explosion k (default 0.0)")
     print("  set scale <on|off> : Apply image dimension coefficient (512x512)")
     print("  reset              : Clear both canvases")
     print("  help               : Show this help")
@@ -152,15 +140,6 @@ def main():
                 continue
 
             if cmd == "set" and len(parts) > 2:
-                try:
-                    val = float(parts[2])
-                    if parts[1] == "k":
-                        engine.explosion_k = val
-                        print(f"explosion_k set to {val}")
-                    continue
-                except ValueError:
-                    pass
-
                 if parts[1] == "scale" and len(parts) > 2:
                     engine.use_dim_scale = parts[2] == "on"
                     print(

@@ -90,12 +90,8 @@ class HumanEyeColorMetric(MetricStrategy):
     def __init__(
         self,
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-        explosion_k: float = 0.0,
-        explosion_n: int = 1,
     ):
         self.weights = weights
-        self.explosion_k = explosion_k
-        self.explosion_n = explosion_n
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -115,25 +111,9 @@ class HumanEyeColorMetric(MetricStrategy):
 
         oklab_blurred = oklab
 
-        # 4. Area Pooling (nxn)
-        if self.explosion_n > 1:
-            oklab_blurred = F.avg_pool2d(
-                oklab_blurred, kernel_size=self.explosion_n, stride=self.explosion_n
-            )
-
-        # 5. Flatten and Compute Minkowski Distance (p-norm)
+        # 4. Flatten and Compute Euclidean Distance
         flat_vec = oklab_blurred.reshape(oklab_blurred.shape[0], -1)
-
-        if self.explosion_k > 0:
-            N = flat_vec.shape[0]
-            dists = torch.zeros((N, N), device=flat_vec.device, dtype=flat_vec.dtype)
-            for i in range(N):
-                # Pixel Explosion: sum(exp(k * |a - b|) - 1)
-                diff = torch.abs(flat_vec[i : i + 1] - flat_vec)
-                row_dist = torch.sum(torch.exp(self.explosion_k * diff) - 1, dim=1)
-                dists[i] = row_dist
-        else:
-            dists = torch.cdist(flat_vec, flat_vec, p=2.0)
+        dists = torch.cdist(flat_vec, flat_vec, p=2.0)
 
         return dists
 
