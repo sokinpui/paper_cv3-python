@@ -7,7 +7,6 @@ from config import METRICS_CONFIG
 from event_handlers import (
     create_click_handler,
     run_analysis,
-    toggle_annotations,
     update_annotation_settings,
 )
 from utils import calculate_oklab_range
@@ -40,7 +39,6 @@ def create_ui(input_dir=None):
                 )
                 with gr.Row():
                     btn_run = gr.Button("🚀 Run Analysis", variant="primary")
-                    btn_toggle_annotations = gr.Button("🎨 Toggle Annotations")
 
                 # Distance Function Selection
                 metric_names = [m[0] for m in METRICS_CONFIG]
@@ -266,12 +264,6 @@ def create_ui(input_dir=None):
             fn=run_analysis,
             inputs=common_inputs,
             outputs=common_outputs,
-        )
-
-        btn_toggle_annotations.click(
-            fn=toggle_annotations,
-            inputs=[analysis_state, cluster_show_scores, cluster_label_mode],
-            outputs=[m[1] for m in metric_images] + [analysis_state],
         )
 
         # Enable dynamic updating of visualization settings

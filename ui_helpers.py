@@ -48,17 +48,8 @@ def find_unit_index_from_click(x, y, grid_info):
     return best_idx
 
 
-def _redraw_metric_image(
-    image_tensor, metric_data, selected_unit_idx=-1, show_overlay=True
-):
+def _redraw_metric_image(image_tensor, metric_data, selected_unit_idx=-1):
     """Helper to redraw a single metric's result image."""
-    # If overlay is off, just return the raw image
-    if not show_overlay:
-        if image_tensor.dim() == 4:
-            image_tensor = image_tensor.squeeze(0)
-        img_np_rgb = image_tensor.permute(1, 2, 0).cpu().numpy()
-        return (img_np_rgb * 255).clip(0, 255).astype(np.uint8)
-
     stats = metric_data["stats"]
     grid_shape = metric_data["grid_shape"]
     strides = metric_data["strides"]

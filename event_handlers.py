@@ -41,13 +41,11 @@ def on_unit_click(metric_name, evt: gr.SelectData, state):
 
     # 2. Redraw image with highlight
     image_tensor = torch.from_numpy(state["image_tensor_np"]).to(DEVICE)
-    overlay_visible = state.get("overlay_visible", True)
 
     result_img = _redraw_metric_image(
         image_tensor,
         data,
         data["selected_unit_idx"],
-        show_overlay=overlay_visible,
     )
     image_update = gr.update(value=result_img)
 
@@ -73,8 +71,6 @@ def _redraw_with_updated_settings(state, cluster_show_scores, cluster_label_mode
     if not state or "image_tensor_np" not in state:
         # Return updates to do nothing if analysis hasn't run
         return tuple([gr.update()] * len(METRICS_CONFIG) + [state])
-
-    overlay_visible = state.get("overlay_visible", True)
 
     # --- Prepare for redrawing ---
     image_tensor = torch.from_numpy(state["image_tensor_np"]).to(DEVICE)
@@ -108,26 +104,11 @@ def _redraw_with_updated_settings(state, cluster_show_scores, cluster_label_mode
             image_tensor,
             metric_data,
             selected_idx,
-            show_overlay=overlay_visible,
         )
 
         image_outputs.append(gr.update(value=result_img))
 
     return tuple(image_outputs + [state])
-
-
-def toggle_annotations(state, cluster_show_scores, cluster_label_mode):
-    """
-    Toggles the visibility of annotations on the result images.
-    Also updates the display settings from UI.
-    """
-    if not state:
-        return tuple([gr.update()] * len(METRICS_CONFIG) + [state])
-
-    # Toggle visibility state
-    state["overlay_visible"] = not state.get("overlay_visible", True)
-
-    return _redraw_with_updated_settings(state, cluster_show_scores, cluster_label_mode)
 
 
 def update_annotation_settings(state, cluster_show_scores, cluster_label_mode):
@@ -193,7 +174,6 @@ def run_analysis(
 
         # Store data needed for toggling annotations
         new_state["image_tensor_np"] = image_tensor.cpu().numpy()
-        new_state["overlay_visible"] = True
 
         # 2. Tile
         patches, grid_shape, strides = processor.extract_patches(
