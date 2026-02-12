@@ -168,4 +168,3 @@ def find_dbscan_eps(matrix: torch.Tensor, min_samples: int) -> float:
         return 1e-6
 
     return eps
-    return float(y_coords[knee_index])
