@@ -12,39 +12,25 @@ from config import METRICS_CONFIG
 from globals import DEVICE
 from processor import ImageProcessor
 from ui_helpers import _redraw_metric_image  # noqa
-from ui_helpers import calculate_vector_distance, find_unit_index_from_click
+from ui_helpers import find_unit_index_from_click
 
 
-def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
+def on_unit_click(metric_name, evt: gr.SelectData, state):
     """
     Handles click on the result image.
-    1. Populates Vector A or Vector B and immediately calculates distance.
-    2. Shows the clicked unit and its neighbors in the Unit Inspector.
-    3. Highlights the clicked unit on the result image.
+    Highlights the clicked unit on the result image.
     """
-    new_vec_a, new_vec_b = vec_a, vec_b
     image_update = gr.update()  # For the specific metric's image
 
     if not (state and metric_name in state):
-        return (
-            new_vec_a,
-            new_vec_b,
-            calculate_vector_distance(new_vec_a, new_vec_b),
-            image_update,
-        )
+        return image_update
 
     data = state[metric_name]
-    stats = data.get("stats", [])
     idx = find_unit_index_from_click(evt.index[0], evt.index[1], data)
 
     # If click is invalid, do nothing.
     if idx < 0 or idx >= len(data["matrix"]):
-        return (
-            vec_a,
-            vec_b,
-            calculate_vector_distance(vec_a, vec_b),
-            image_update,
-        )
+        return image_update
 
     # 1. Update selection state (toggle)
     current_selected = data.get("selected_unit_idx", -1)
@@ -53,54 +39,7 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     else:
         data["selected_unit_idx"] = idx  # Select
 
-    # 2. Vector Calculator Logic
-    matrix = data["matrix"]
-    vector = matrix[idx]
-    vector = np.nan_to_num(vector, nan=0.0)
-    vec_str = ", ".join([f"{x:.4f}" for x in vector])
-
-    # Determine which vector to populate and store indices
-    if not vec_a:
-        new_vec_a = vec_str
-        data["vec_a_idx"] = idx
-        if "vec_b_idx" in data:
-            del data["vec_b_idx"]
-    elif not vec_b:
-        new_vec_b = vec_str
-        data["vec_b_idx"] = idx
-    else:
-        new_vec_b = vec_str  # Overwrite B if A and B are full
-        data["vec_b_idx"] = idx
-
-    # Generate result string
-    distance_result = calculate_vector_distance(new_vec_a, new_vec_b)
-
-    # Prepend Clicked Unit Stats (NN Dist, etc.)
-    # FIX: stats list is sorted, so stats[idx] is NOT the unit at index idx.
-    # We must find the unit with .index == idx
-    u = next((s for s in stats if s.index == idx), None)
-
-    if u:
-        stat_info = f"--- Selected Unit #{idx + 1} ---\n"
-        stat_info += f"Cluster ID: {u.cluster_id}\n"
-        if hasattr(u, "nn_dist"):
-            stat_info += f"1-NN Dist:  {u.nn_dist:.4f}\n"
-        if hasattr(u, "neighbor_dist"):
-            stat_info += f"k-Dist:     {u.neighbor_dist:.4f}\n"
-        stat_info += f"Mean:       {u.mean:.4f}\n\n"
-        distance_result = stat_info + distance_result
-
-    # Add pairwise distance if available from click selections
-    idx_a = data.get("vec_a_idx")
-    idx_b = data.get("vec_b_idx")
-
-    if idx_a is not None and idx_b is not None:
-        pairwise_dist = matrix[idx_a, idx_b]
-        dist_info = f"\n\n--- Pairwise Distance (from matrix) ---\n"
-        dist_info += f"Distance(unit {idx_a}, unit {idx_b}): {pairwise_dist:.6f}"
-        distance_result += dist_info
-
-    # 3. Redraw image with highlight
+    # 2. Redraw image with highlight
     image_tensor = torch.from_numpy(state["image_tensor_np"]).to(DEVICE)
     overlay_visible = state.get("overlay_visible", True)
 
@@ -112,12 +51,7 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     )
     image_update = gr.update(value=result_img)
 
-    return (
-        new_vec_a,
-        new_vec_b,
-        distance_result,
-        image_update,
-    )
+    return image_update
 
 
 def create_click_handler(metric_name):
@@ -126,8 +60,8 @@ def create_click_handler(metric_name):
     in Gradio. Captures metric_name.
     """
 
-    def handler(evt: gr.SelectData, state, vec_a, vec_b):
-        return on_unit_click(metric_name, evt, state, vec_a, vec_b)
+    def handler(evt: gr.SelectData, state):
+        return on_unit_click(metric_name, evt, state)
 
     return handler
 

@@ -10,7 +10,6 @@ from event_handlers import (
     toggle_annotations,
     update_annotation_settings,
 )
-from ui_helpers import calculate_vector_distance, clear_vector_inputs
 from utils import calculate_oklab_range
 
 # Compatibility for older Gradio versions (Pre-5.0)
@@ -239,24 +238,6 @@ def create_ui(input_dir=None):
                     metric_outputs.extend([metric_group, m_img, m_perf])
                     metric_images.append((name, m_img))
 
-                gr.Markdown("### 📐 Vector Calculator")
-                with gr.Group():
-                    with gr.Row():
-                        vc_a = gr.Textbox(label="Vector A", placeholder="1.0, 2.0, ...")
-                        vc_b = gr.Textbox(label="Vector B", placeholder="3.0, 4.0, ...")
-                    with gr.Row():
-                        vc_btn = gr.Button("Calculate Distance", variant="primary")
-                        vc_clear = gr.Button("Clear")
-                    vc_res = gr.Textbox(label="Results", lines=8)
-                    vc_btn.click(
-                        calculate_vector_distance,
-                        inputs=[vc_a, vc_b],
-                        outputs=vc_res,
-                    )
-                    vc_clear.click(
-                        clear_vector_inputs, inputs=None, outputs=[vc_a, vc_b, vc_res]
-                    )
-
                 # perf_output = gr.Markdown() # Removed global perf
                 analysis_state = gr.State({})  # Store matrix data per session
 
@@ -305,8 +286,8 @@ def create_ui(input_dir=None):
         for name, img_comp in metric_images:
             img_comp.select(
                 fn=create_click_handler(name),
-                inputs=[analysis_state, vc_a, vc_b],
-                outputs=[vc_a, vc_b, vc_res, img_comp],
+                inputs=[analysis_state],
+                outputs=[img_comp],
             )
 
     return demo
