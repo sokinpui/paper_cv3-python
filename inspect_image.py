@@ -141,6 +141,26 @@ class ImageInspector:
         print(f"Sum: {np.nansum(vector):.4f}")
         print(vector)
 
+    def print_clusters(self):
+        if not self.stats:
+            print("No analysis data available.")
+            return
+
+        clusters = {}
+        for u in self.stats:
+            cid = u.cluster_id
+            if cid not in clusters:
+                clusters[cid] = []
+            clusters[cid].append(u)
+
+        print(f"--- Clustering Summary (Total Units: {len(self.stats)}) ---")
+        for cid in sorted(clusters.keys()):
+            label = f"Cluster {cid}" if cid != -1 else "Noise (Cluster -1)"
+            units = clusters[cid]
+            indices = [f"{u.index}({u.row},{u.col})" for u in units]
+            print(f"\n{label} [Count: {len(units)}]")
+            print(f"Units: {', '.join(indices)}")
+
     def print_noise_units(self):
         noise = [u for u in self.stats if u.cluster_id == -1]
 
@@ -158,6 +178,7 @@ def print_help():
     print("  info              : Show unit size and grid dimensions")
     print("  size <n>          : Set unit size to n x n (default 512)")
     print("  m / metric <name> : Set metric (oklab, ssim, cosine)")
+    print("  c / cluster       : Show units grouped by cluster")
     print("  set <n>           : Set Oklab distance threshold")
     print("  p / print         : Print distance matrix of all units")
     print("  w / which         : Print indices of noise units (Cluster -1)")
@@ -217,6 +238,10 @@ def main():
                     inspector.print_vector(int(parts[1]), int(parts[2]))
                 else:
                     inspector.print_vector()
+                continue
+
+            if cmd in ["c", "cluster"]:
+                inspector.print_clusters()
                 continue
 
             if cmd in ["w", "which"]:
