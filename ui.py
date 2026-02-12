@@ -257,19 +257,6 @@ def create_ui(input_dir=None):
                         clear_vector_inputs, inputs=None, outputs=[vc_a, vc_b, vc_res]
                     )
 
-                gr.Markdown("### 🔬 Unit Inspector")
-                gr.Markdown(
-                    "Click on a unit in the result image to see it and its neighbors here."
-                )
-                unit_inspector_gallery = gr.Gallery(
-                    label="Clicked Unit (Center) and Neighbors",
-                    show_label=False,
-                    columns=3,
-                    rows=3,
-                    object_fit="contain",
-                    height="auto",
-                )
-
                 # perf_output = gr.Markdown() # Removed global perf
                 analysis_state = gr.State({})  # Store matrix data per session
 
@@ -319,7 +306,7 @@ def create_ui(input_dir=None):
             img_comp.select(
                 fn=create_click_handler(name),
                 inputs=[analysis_state, vc_a, vc_b],
-                outputs=[vc_a, vc_b, vc_res, unit_inspector_gallery, img_comp],
+                outputs=[vc_a, vc_b, vc_res, img_comp],
             )
 
     return demo

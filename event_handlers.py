@@ -2,7 +2,6 @@ import os
 import tempfile
 import time
 
-import cv2
 import gradio as gr
 import numpy as np
 import torch
@@ -24,7 +23,6 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
     3. Highlights the clicked unit on the result image.
     """
     new_vec_a, new_vec_b = vec_a, vec_b
-    gallery_update = gr.update()
     image_update = gr.update()  # For the specific metric's image
 
     if not (state and metric_name in state):
@@ -32,7 +30,6 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
             new_vec_a,
             new_vec_b,
             calculate_vector_distance(new_vec_a, new_vec_b),
-            gallery_update,
             image_update,
         )
 
@@ -46,7 +43,6 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
             vec_a,
             vec_b,
             calculate_vector_distance(vec_a, vec_b),
-            gallery_update,
             image_update,
         )
 
@@ -104,34 +100,7 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
         dist_info += f"Distance(unit {idx_a}, unit {idx_b}): {pairwise_dist:.6f}"
         distance_result += dist_info
 
-    # 3. Unit Inspector Logic (Copied from original, unchanged)
-    gallery_images = []
-    rows, cols = data["grid_shape"]
-    stride_h, stride_w = data["strides"]
-    unit_h, unit_w = data["unit_size"]
-    img_np_chw = state["image_tensor_np"].squeeze(0)
-    img_np_hwc = np.transpose(img_np_chw, (1, 2, 0))
-    img_np_hwc = (img_np_hwc * 255).clip(0, 255).astype(np.uint8)
-    H, W, _ = img_np_hwc.shape
-    clicked_r, clicked_c = divmod(idx, cols)
-    for dr in [-1, 0, 1]:
-        for dc in [-1, 0, 1]:
-            r, c = clicked_r + dr, clicked_c + dc
-            if 0 <= r < rows and 0 <= c < cols:
-                y = H - unit_h if r == rows - 1 else r * stride_h
-                x = W - unit_w if c == cols - 1 else c * stride_w
-                patch = img_np_hwc[y : y + unit_h, x : x + unit_w, :].copy()
-                if dr == 0 and dc == 0:
-                    cv2.rectangle(
-                        patch, (0, 0), (unit_w - 1, unit_h - 1), (255, 255, 0), 2
-                    )
-                gallery_images.append(patch)
-            else:
-                placeholder = np.zeros((unit_h, unit_w, 3), dtype=np.uint8)
-                gallery_images.append(placeholder)
-    gallery_update = gr.update(value=gallery_images)
-
-    # 4. Redraw image with highlight
+    # 3. Redraw image with highlight
     image_tensor = torch.from_numpy(state["image_tensor_np"]).to(DEVICE)
     overlay_visible = state.get("overlay_visible", True)
 
@@ -147,7 +116,6 @@ def on_unit_click(metric_name, evt: gr.SelectData, state, vec_a, vec_b):
         new_vec_a,
         new_vec_b,
         distance_result,
-        gallery_update,
         image_update,
     )
 
