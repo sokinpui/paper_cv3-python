@@ -93,18 +93,6 @@ def main():
         help="Convert image to grayscale before processing",
     )
     parser.add_argument(
-        "--power_transform",
-        type=float,
-        default=0.4,
-        help="Raise distance to a power (distance^n). Default is 1.0 (no change).",
-    )
-    parser.add_argument(
-        "--sigmoid_k",
-        type=float,
-        default=0.0,
-        help="Sigmoid contrast factor (k). 0=Off. >0 applies sigmoid stretch to distances.",
-    )
-    parser.add_argument(
         "--explosion_n",
         type=int,
         default=1,
@@ -163,8 +151,6 @@ def main():
             top_n=args.top_n,
             sort_by=args.sort_by,
             ascending=ascending,
-            power_transform_degree=args.power_transform,
-            sigmoid_k=args.sigmoid_k,
         )
 
         # 4. Output

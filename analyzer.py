@@ -30,45 +30,12 @@ class PatchAnalyzer:
         self.metric = metric_strategy
 
     def compute_distance_matrix(
-        self, patches: torch.Tensor, power_transform_degree: float = 1.0, sigmoid_k: float = 0.0
+        self, patches: torch.Tensor
     ) -> torch.Tensor:
         """
-        Computes the distance matrix and applies optional transformations
-        (Sigmoid Contrast Stretch, Power Transform).
+        Computes the distance matrix.
         """
-        # 1. Compute Raw Distance Matrix
-        matrix = self.metric.compute(patches)
-
-        # 2. Apply Sigmoid Contrast (Approach 1)
-        # Formula: 1 / (1 + exp(-k * (x - mu)))
-        if sigmoid_k > 0.0:
-            N = matrix.shape[0]
-            # Mask diagonal for stats calculation
-            mask = ~torch.eye(N, device=matrix.device, dtype=torch.bool)
-            
-            # Normalize to [0, 1] based on max distance
-            max_dist = matrix.max()
-            if max_dist > 1e-6:
-                matrix_norm = matrix / max_dist
-            else:
-                matrix_norm = matrix.clone()
-            
-            # Calculate mean of valid off-diagonal elements
-            valid_elements = matrix_norm[mask]
-            mu = valid_elements.mean() if valid_elements.numel() > 0 else 0.5
-
-            # Apply Sigmoid
-            # Shifts values < mu towards 0, values > mu towards 1
-            matrix = 1.0 / (1.0 + torch.exp(-sigmoid_k * (matrix_norm - mu)))
-            
-            # Ensure diagonal remains 0
-            matrix.fill_diagonal_(0.0)
-
-        # 3. Apply Power Transformation
-        if power_transform_degree != 1.0:
-            matrix = torch.pow(matrix.clamp(min=0.0), power_transform_degree)
-
-        return matrix
+        return self.metric.compute(patches)
 
     def analyze(
         self,
@@ -81,8 +48,6 @@ class PatchAnalyzer:
         clustering_algorithm: str = "kmeans",
         eps: float = 0.0,
         min_samples: int = 2,
-        power_transform_degree: float = 0.4,
-        sigmoid_k: float = 0.0,
     ) -> Tuple[List[UnitStats], torch.Tensor, float]:
         """
         patches: (N, C, H, W)
@@ -93,7 +58,7 @@ class PatchAnalyzer:
         calculated_eps = eps
 
         # 1. Compute Similarity/Distance Matrix (N, N)
-        matrix = self.compute_distance_matrix(patches, power_transform_degree, sigmoid_k)
+        matrix = self.compute_distance_matrix(patches)
 
         # Calculate k-Distance for debugging DBSCAN (Distance to the (min_samples-1)-th neighbor)
         # Index 0 is self, so index (min_samples-1) corresponds to the k-th neighbor count.

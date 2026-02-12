@@ -249,8 +249,6 @@ def run_analysis(
     selected_distance_functions,
     dbscan_eps,
     dbscan_min_samples,
-    power_transform_degree,
-    sigmoid_k,
     ssim_k1,
     ssim_k2,
     oklab_explosion_n,
@@ -357,8 +355,6 @@ def run_analysis(
                 clustering_algorithm=algo,
                 eps=float(dbscan_eps),
                 min_samples=int(dbscan_min_samples),
-                power_transform_degree=float(power_transform_degree),
-                sigmoid_k=float(sigmoid_k),
             )
 
             # Store Data in State for this metric

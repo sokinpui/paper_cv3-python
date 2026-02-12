@@ -47,7 +47,4 @@ Please read [doc.pdf](./doc.pdf) for details explanation for the following:
 ### Algorithm Logic
 ### Auto-Epsilon (K-Distance Graph)
 ### References
-## 5. Distance Transformations
-### Sigmoid Contrast Stretch
-### Power Transformation
 ```

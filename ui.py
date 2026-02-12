@@ -173,24 +173,6 @@ def create_ui(input_dir=None):
                         label="Overlap Ratio",
                     )
 
-                with gr.Row():
-                    power_transform_input = gr.Slider(
-                        minimum=0.1,
-                        maximum=5.0,
-                        value=1.0,
-                        step=0.1,
-                        label="Power Transformation",
-                        info="distance^n. >1 exaggerates differences.",
-                    )
-                    sigmoid_k_input = gr.Slider(
-                        minimum=0.0,
-                        maximum=20.0,
-                        value=0.0,
-                        step=0.5,
-                        label="Sigmoid Contrast (k)",
-                        info="Sigmoid Stretch. 0=Off, 10=Strong Contrast. Pushes similar units to 0, different to 1.",
-                    )
-
                 def update_unit_size(preset_key):
                     h, w = unit_size_presets[preset_key]
                     return h, w
@@ -291,8 +273,6 @@ def create_ui(input_dir=None):
             distance_funcs_input,
             dbscan_eps_input,
             dbscan_min_input,
-            power_transform_input,
-            sigmoid_k_input,
             ssim_k1_input,
             ssim_k2_input,
             oklab_explosion_n_input,
