@@ -158,28 +158,6 @@ class OklabMetric(MetricStrategy):
         return torch.stack([L, a, b], dim=1)
 
 
-class CosineMetric(MetricStrategy):
-    def compute(self, patches: torch.Tensor) -> torch.Tensor:
-        """
-        Computes Cosine Distance: 1 - Cosine Similarity.
-        Range [0, 2]. 0 = Identical direction/pattern.
-        Efficiently implemented via matrix multiplication.
-        """
-        # Flatten: (N, C, H, W) -> (N, D)
-        flat = patches.reshape(patches.shape[0], -1)
-
-        # Normalize rows (L2 norm) to create unit vectors
-        norm = torch.norm(flat, p=2, dim=1, keepdim=True)
-        flat_norm = flat / (norm + 1e-8)  # Avoid division by zero
-
-        # Similarity = A . B^T (for unit vectors)
-        similarity = torch.mm(flat_norm, flat_norm.t())
-
-        # Distance = 1 - Similarity
-        # Clamp ensures we don't get negative zeros or > 2 due to precision
-        return 1.0 - similarity.clamp(-1.0, 1.0)
-
-
 class CIELABMetric(MetricStrategy):
     def __init__(self, kl: float = 1.0, kc: float = 1.0, kh: float = 1.0):
         self.kl = kl

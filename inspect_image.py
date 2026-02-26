@@ -6,7 +6,7 @@ import torch
 
 from analyzer import PatchAnalyzer
 from globals import DEVICE
-from metrics import CosineMetric, OklabMetric, SSIMMetric
+from metrics import OklabMetric, SSIMMetric
 from processor import ImageProcessor
 from utils import calculate_oklab_range
 
@@ -44,8 +44,6 @@ class ImageInspector:
             self.metric = OklabMetric(threshold=self.oklab_threshold)
         elif name == "ssim":
             self.metric = SSIMMetric()
-        elif name == "cosine":
-            self.metric = CosineMetric()
         else:
             raise ValueError(f"Unknown metric: {name}")
         self.analyzer = PatchAnalyzer(self.metric)
@@ -177,7 +175,7 @@ def print_help():
     print("\nAvailable Commands:")
     print("  info              : Show unit size and grid dimensions")
     print("  size <n>          : Set unit size to n x n (default 512)")
-    print("  m / metric <name> : Set metric (oklab, ssim, cosine)")
+    print("  m / metric <name> : Set metric (oklab, ssim)")
     print("  c / cluster       : Show units grouped by cluster")
     print("  set <n>           : Set Oklab distance threshold")
     print("  p / print         : Print distance matrix of all units")

@@ -7,7 +7,7 @@ import torch
 import visualizer
 from analyzer import PatchAnalyzer
 from globals import DEVICE, get_device_name
-from metrics import CosineMetric, OklabMetric, SSIMMetric
+from metrics import OklabMetric, SSIMMetric
 from processor import ImageProcessor
 
 
@@ -29,7 +29,6 @@ def main():
         choices=[
             "ssim",
             "human_eye",
-            "cosine",
         ],
         default="human_eye",
         help="Comparison metric",
@@ -106,8 +105,6 @@ def main():
         metric = SSIMMetric()
     elif args.metric == "human_eye":
         metric = OklabMetric()
-    elif args.metric == "cosine":
-        metric = CosineMetric()
 
     # Both metrics now use High Score = Different. Default sort is Descending (False).
     ascending = args.ascending
