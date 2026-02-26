@@ -119,7 +119,7 @@ class OklabMetric(MetricStrategy):
         flat_vec = oklab_blurred.reshape(oklab_blurred.shape[0], -1)
         dists = torch.cdist(flat_vec, flat_vec, p=2.0)
 
-        if self.threshold < float("inf"):
+        if 0 < self.threshold < float("inf"):
             _, _, H, W = patches.shape
             # 1^2 + 0.8^2 + 0.8^2 = 2.28
             # range of L = [0, 1]

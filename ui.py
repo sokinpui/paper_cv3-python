@@ -55,7 +55,7 @@ def create_ui(input_dir=None):
                     oklab_threshold_input = gr.Slider(
                         minimum=0.0,
                         maximum=initial_max,
-                        value=initial_max,
+                        value=0.0,
                         step=0.1,
                         label="Oklab Distance Threshold (x)",
                         info="If distance > x, distance = distance * Max_Distance",
@@ -180,7 +180,7 @@ def create_ui(input_dir=None):
                     if not h or not w:
                         return gr.update()
                     max_dist = calculate_oklab_range(h, w)
-                    return gr.update(maximum=max_dist, value=max_dist)
+                    return gr.update(maximum=max_dist)
 
                 h_input.change(
                     fn=update_oklab_max,
