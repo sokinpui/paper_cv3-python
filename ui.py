@@ -61,6 +61,35 @@ def create_ui(input_dir=None):
                         info="If distance > x, distance = distance * Max_Distance",
                     )
 
+                with gr.Group(visible=False) as cielab_options:
+                    gr.Markdown("CIELAB Delta E 2000 (Perceptual Color Difference).")
+                    with gr.Row():
+                        cielab_kl_input = gr.Slider(
+                            minimum=0.1,
+                            maximum=2.0,
+                            value=1.0,
+                            step=0.1,
+                            label="kL (Lightness)",
+                            info="Higher = less sensitive to lightness differences.",
+                        )
+                        cielab_kc_input = gr.Slider(
+                            minimum=0.1,
+                            maximum=2.0,
+                            value=1.0,
+                            step=0.1,
+                            label="kC (Chroma)",
+                            info="Higher = less sensitive to saturation differences.",
+                        )
+                    with gr.Row():
+                        cielab_kh_input = gr.Slider(
+                            minimum=0.1,
+                            maximum=2.0,
+                            value=1.0,
+                            step=0.1,
+                            label="kH (Hue)",
+                            info="Higher = less sensitive to hue differences.",
+                        )
+
                 with gr.Group(visible=False) as ssim_options:
                     ssim_k1_input = gr.Slider(
                         minimum=0.001,
@@ -97,14 +126,16 @@ def create_ui(input_dir=None):
                         )
 
                 def update_metric_options_visibility(selected_metrics):
-                    return gr.update(visible="Oklab" in selected_metrics), gr.update(
-                        visible="SSIM" in selected_metrics
+                    return (
+                        gr.update(visible="Oklab" in selected_metrics),
+                        gr.update(visible="SSIM" in selected_metrics),
+                        gr.update(visible="CIELAB" in selected_metrics),
                     )
 
                 distance_funcs_input.change(
                     fn=update_metric_options_visibility,
                     inputs=distance_funcs_input,
-                    outputs=[oklab_options, ssim_options],
+                    outputs=[oklab_options, ssim_options, cielab_options],
                 )
 
                 gr.Markdown("### Settings")
@@ -264,6 +295,9 @@ def create_ui(input_dir=None):
             ssim_beta_input,
             oklab_threshold_input,
             global_blur_input,
+            cielab_kl_input,
+            cielab_kc_input,
+            cielab_kh_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [analysis_state]

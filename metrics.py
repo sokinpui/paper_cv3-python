@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -177,3 +178,106 @@ class CosineMetric(MetricStrategy):
         # Distance = 1 - Similarity
         # Clamp ensures we don't get negative zeros or > 2 due to precision
         return 1.0 - similarity.clamp(-1.0, 1.0)
+
+
+class CIELABMetric(MetricStrategy):
+    def __init__(self, kl: float = 1.0, kc: float = 1.0, kh: float = 1.0):
+        self.kl = kl
+        self.kc = kc
+        self.kh = kh
+
+    def compute(self, patches: torch.Tensor) -> torch.Tensor:
+        lab = self._rgb_to_lab(patches)
+        mean_lab = lab.mean(dim=(2, 3))
+        return self._compute_pairwise_delta_e2000(mean_lab)
+
+    def _rgb_to_lab(self, image: torch.Tensor) -> torch.Tensor:
+        mask = image > 0.04045
+        linear_rgb = torch.zeros_like(image)
+        linear_rgb[mask] = ((image[mask] + 0.055) / 1.055) ** 2.4
+        linear_rgb[~mask] = image[~mask] / 12.92
+
+        r, g, b = linear_rgb[:, 0], linear_rgb[:, 1], linear_rgb[:, 2]
+
+        x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375
+        y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750
+        z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041
+
+        # D65 White Point
+        x /= 0.95047
+        z /= 1.08883
+
+        def f(t):
+            m = t > 0.008856
+            res = torch.zeros_like(t)
+            res[m] = torch.pow(t[m], 1 / 3)
+            res[~m] = (7.787 * t[~m]) + (16 / 116)
+            return res
+
+        fx, fy, fz = f(x), f(y), f(z)
+        l = (116 * fy) - 16
+        a = 500 * (fx - fy)
+        b = 200 * (fy - fz)
+
+        return torch.stack([l, a, b], dim=1)
+
+    def _compute_pairwise_delta_e2000(self, lab: torch.Tensor) -> torch.Tensor:
+        n = lab.shape[0]
+        l, a, b = lab[:, 0], lab[:, 1], lab[:, 2]
+
+        l1, l2 = l.unsqueeze(1), l.unsqueeze(0)
+        a1, a2 = a.unsqueeze(1), a.unsqueeze(0)
+        b1, b2 = b.unsqueeze(1), b.unsqueeze(0)
+
+        avg_lp = (l1 + l2) / 2.0
+        c1 = torch.sqrt(a1**2 + b1**2)
+        c2 = torch.sqrt(a2**2 + b2**2)
+        avg_c1c2 = (c1 + c2) / 2.0
+
+        g = 0.5 * (1 - torch.sqrt(avg_c1c2**7 / (avg_c1c2**7 + 25**7)))
+        a1p, a2p = (1 + g) * a1, (1 + g) * a2
+        c1p, c2p = torch.sqrt(a1p**2 + b1**2), torch.sqrt(a2p**2 + b2**2)
+        avg_cp = (c1p + c2p) / 2.0
+
+        h1p = torch.atan2(b1, a1p) * 180 / np.pi
+        h1p = torch.where(h1p < 0, h1p + 360, h1p)
+        h2p = torch.atan2(b2, a2p) * 180 / np.pi
+        h2p = torch.where(h2p < 0, h2p + 360, h2p)
+
+        h_diff = h2p - h1p
+        h_diff = torch.where(
+            torch.abs(h_diff) > 180, h_diff - 360 * torch.sign(h_diff), h_diff
+        )
+        delta_hp = 2 * torch.sqrt(c1p * c2p) * torch.sin(h_diff / 2.0 * np.pi / 180)
+
+        avg_hp = torch.where(
+            torch.abs(h1p - h2p) > 180, (h1p + h2p + 360) / 2.0, (h1p + h2p) / 2.0
+        )
+
+        t = (
+            1
+            - 0.17 * torch.cos((avg_hp - 30) * np.pi / 180)
+            + 0.24 * torch.cos(2 * avg_hp * np.pi / 180)
+            + 0.32 * torch.cos((3 * avg_hp + 6) * np.pi / 180)
+            - 0.20 * torch.cos((4 * avg_hp - 63) * np.pi / 180)
+        )
+
+        delta_lp = l2 - l1
+        delta_cp = c2p - c1p
+
+        sl = 1 + (0.015 * (avg_lp - 50) ** 2) / torch.sqrt(20 + (avg_lp - 50) ** 2)
+        sc = 1 + 0.045 * avg_cp
+        sh = 1 + 0.015 * avg_cp * t
+
+        delta_ro = 30 * torch.exp(-(((avg_hp - 275) / 25) ** 2))
+        rc = 2 * torch.sqrt(avg_cp**7 / (avg_cp**7 + 25**7))
+        rt = -torch.sin(2 * delta_ro * np.pi / 180) * rc
+
+        dist = torch.sqrt(
+            (delta_lp / (self.kl * sl)) ** 2
+            + (delta_cp / (self.kc * sc)) ** 2
+            + (delta_hp / (self.kh * sh)) ** 2
+            + rt * (delta_cp / (self.kc * sc)) * (delta_hp / (self.kh * sh))
+        )
+
+        return dist
