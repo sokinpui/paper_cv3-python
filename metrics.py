@@ -183,16 +183,16 @@ class CIELABMetric(MetricStrategy):
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         lab = self._rgb_to_lab(patches)
-        mean_lab = lab.mean(dim=(2, 3))
-        dists = self._compute_pairwise_delta_e2000(mean_lab)
+        # Compute pairwise distances where each cell (i, j) is the
+        # mean of the Delta E 2000 map between patch i and patch j.
+        dists = self._compute_pairwise_delta_e2000(lab)
 
-        if self.threshold > 0:
-            dists = torch.where(
-                dists > self.threshold,
-                dists * self.multiplier,
-                dists
-            )
-        return dists
+        return self._apply_threshold(dists)
+
+    def _apply_threshold(self, dists: torch.Tensor) -> torch.Tensor:
+        if self.threshold <= 0:
+            return dists
+        return torch.where(dists > self.threshold, dists * self.multiplier, dists)
 
     def _rgb_to_lab(self, image: torch.Tensor) -> torch.Tensor:
         mask = image > 0.04045
@@ -225,9 +225,15 @@ class CIELABMetric(MetricStrategy):
         return torch.stack([l, a, b], dim=1)
 
     def _compute_pairwise_delta_e2000(self, lab: torch.Tensor) -> torch.Tensor:
-        n = lab.shape[0]
-        l, a, b = lab[:, 0], lab[:, 1], lab[:, 2]
+        """
+        Vectorized implementation of CIEDE2000.
+        Input lab: (N, 3, H, W)
+        Returns: (N, N) distance matrix where each entry is the mean pixel-wise Delta E.
+        """
+        N, _, H, W = lab.shape
+        l, a, b = lab[:, 0], lab[:, 1], lab[:, 2]  # Each is (N, H, W)
 
+        # Expand to (N, N, H, W) to compare all patches against each other
         l1, l2 = l.unsqueeze(1), l.unsqueeze(0)
         a1, a2 = a.unsqueeze(1), a.unsqueeze(0)
         b1, b2 = b.unsqueeze(1), b.unsqueeze(0)
@@ -276,11 +282,13 @@ class CIELABMetric(MetricStrategy):
         rc = 2 * torch.sqrt(avg_cp**7 / (avg_cp**7 + 25**7))
         rt = -torch.sin(2 * delta_ro * np.pi / 180) * rc
 
-        dist = torch.sqrt(
+        # Calculate the Delta E 2000 map for every pair
+        delta_e_map = torch.sqrt(
             (delta_lp / (self.kl * sl)) ** 2
             + (delta_cp / (self.kc * sc)) ** 2
             + (delta_hp / (self.kh * sh)) ** 2
             + rt * (delta_cp / (self.kc * sc)) * (delta_hp / (self.kh * sh))
         )
 
-        return dist
+        # Return the mean difference per patch pair (N, N)
+        return delta_e_map.mean(dim=(2, 3))
