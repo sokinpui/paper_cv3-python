@@ -136,6 +136,7 @@ def run_analysis(
     ssim_alpha,
     ssim_beta,
     oklab_threshold,
+    oklab_multiplier,
     global_blur_level,
     cielab_kl,
     cielab_kc,
@@ -222,6 +223,7 @@ def run_analysis(
                 metric = MetricClass(
                     weights=(1.0, 1.0, 1.0),
                     threshold=float(oklab_threshold),
+                    multiplier=float(oklab_multiplier),
                 )
             elif name == "CIELAB":
                 metric = MetricClass(

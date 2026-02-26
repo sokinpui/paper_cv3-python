@@ -4,8 +4,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from utils import calculate_oklab_range
-
 
 class MetricStrategy:
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
@@ -51,7 +49,9 @@ class SSIMMetric(MetricStrategy):
 
         dists = 1.0 - ssim_matrix
         if self.threshold > 0:
-            dists = torch.where(dists > self.threshold, dists * self.multiplier, dists)
+            # Range of 1-SSIM is [0, 2]
+            actual_threshold = self.threshold * 2.0
+            dists = torch.where(dists > actual_threshold, dists * self.multiplier, dists)
 
         return dists
 
@@ -102,9 +102,11 @@ class OklabMetric(MetricStrategy):
         self,
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         threshold: float = 0.0,
+        multiplier: float = 1.0,
     ):
         self.weights = weights
         self.threshold = threshold
+        self.multiplier = multiplier
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -128,14 +130,10 @@ class OklabMetric(MetricStrategy):
 
         if self.threshold > 0:
             _, _, H, W = patches.shape
-            # 1^2 + 0.8^2 + 0.8^2 = 2.28
-            # range of L = [0, 1]
-            # range of a = [-0.4, 0.4]
-            # range of b = [-0.4, 0.4]
-            # maximum distance between two units are sqrt(2.28 x Height in pixel x Weight in pixel)
-            # new_dist = dist x (maximum distance ^ 2)
-            multipler = calculate_oklab_range(H, W)
-            dists = torch.where(dists > self.threshold, dists * multipler, dists)
+            # Max per-pixel Oklab L2 distance squared is approx 2.28
+            max_dist = (2.28 * H * W) ** 0.5
+            actual_threshold = self.threshold * max_dist
+            dists = torch.where(dists > actual_threshold, dists * self.multiplier, dists)
 
         return dists
 
@@ -192,7 +190,9 @@ class CIELABMetric(MetricStrategy):
     def _apply_threshold(self, dists: torch.Tensor) -> torch.Tensor:
         if self.threshold <= 0:
             return dists
-        return torch.where(dists > self.threshold, dists * self.multiplier, dists)
+        # CIEDE2000 range is typically [0, 100]
+        actual_threshold = self.threshold * 100.0
+        return torch.where(dists > actual_threshold, dists * self.multiplier, dists)
 
     def _rgb_to_lab(self, image: torch.Tensor) -> torch.Tensor:
         mask = image > 0.04045

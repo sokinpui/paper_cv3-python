@@ -8,7 +8,6 @@ from analyzer import PatchAnalyzer
 from globals import DEVICE
 from metrics import OklabMetric, SSIMMetric
 from processor import ImageProcessor
-from utils import calculate_oklab_range
 
 
 class ImageInspector:
@@ -107,9 +106,7 @@ class ImageInspector:
         print(f"Unit Size: {self.unit_size}x{self.unit_size}")
         print(f"Grid: {rows} rows x {cols} columns ({n_units} total units)")
         if self.metric_name == "oklab":
-            multiplier = calculate_oklab_range(self.unit_size, self.unit_size)
             print(f"Oklab Threshold: {self.oklab_threshold}")
-            print(f"Oklab Multiplier: {multiplier:.4f}")
         print(f"Matrix Shape: {self.matrix.shape}")
 
     def print_vector(self, row: int = None, col: int = None):
