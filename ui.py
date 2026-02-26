@@ -89,6 +89,22 @@ def create_ui(input_dir=None):
                             label="kH (Hue)",
                             info="Higher = less sensitive to hue differences.",
                         )
+                    with gr.Row():
+                        cielab_threshold_input = gr.Slider(
+                            minimum=0.0,
+                            maximum=100.0,
+                            value=0.0,
+                            step=0.5,
+                            label="CIELAB Threshold",
+                            info="Distances above this are multiplied.",
+                        )
+                        cielab_multiplier_input = gr.Slider(
+                            minimum=1.0,
+                            maximum=1000.0,
+                            value=1.0,
+                            step=10.0,
+                            label="Multiplier",
+                        )
 
                 with gr.Group(visible=False) as ssim_options:
                     ssim_k1_input = gr.Slider(
@@ -123,6 +139,22 @@ def create_ui(input_dir=None):
                             step=0.05,
                             label="Beta (Struct Power)",
                             info="Power applied to Structure similarity. >1 suppresses small texture matches.",
+                        )
+                    with gr.Row():
+                        ssim_threshold_input = gr.Slider(
+                            minimum=0.0,
+                            maximum=2.0,
+                            value=0.0,
+                            step=0.01,
+                            label="SSIM Dist Threshold",
+                            info="Distances (1-SSIM) above this are multiplied.",
+                        )
+                        ssim_multiplier_input = gr.Slider(
+                            minimum=1.0,
+                            maximum=1000.0,
+                            value=1.0,
+                            step=10.0,
+                            label="Multiplier",
                         )
 
                 def update_metric_options_visibility(selected_metrics):
@@ -298,6 +330,10 @@ def create_ui(input_dir=None):
             cielab_kl_input,
             cielab_kc_input,
             cielab_kh_input,
+            cielab_threshold_input,
+            cielab_multiplier_input,
+            ssim_threshold_input,
+            ssim_multiplier_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [analysis_state]

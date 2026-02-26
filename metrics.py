@@ -23,11 +23,15 @@ class SSIMMetric(MetricStrategy):
         k2: float = 0.03,
         alpha: float = 1.0,
         beta: float = 1.0,
+        threshold: float = 0.0,
+        multiplier: float = 1.0,
     ):
         self.k1 = k1
         self.k2 = k2
         self.alpha = alpha
         self.beta = beta
+        self.threshold = threshold
+        self.multiplier = multiplier
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -45,7 +49,11 @@ class SSIMMetric(MetricStrategy):
                 )
             ssim_matrix = torch.stack(channel_ssims).mean(dim=0)
 
-        return 1.0 - ssim_matrix
+        dists = 1.0 - ssim_matrix
+        if self.threshold > 0:
+            dists = torch.where(dists > self.threshold, dists * self.multiplier, dists)
+
+        return dists
 
     def _compute_ssim_matrix(self, patches: torch.Tensor) -> torch.Tensor:
         """
@@ -93,7 +101,7 @@ class OklabMetric(MetricStrategy):
     def __init__(
         self,
         weights: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-        threshold: float = float("inf"),
+        threshold: float = 0.0,
     ):
         self.weights = weights
         self.threshold = threshold
@@ -118,7 +126,7 @@ class OklabMetric(MetricStrategy):
         flat_vec = oklab.reshape(oklab.shape[0], -1)
         dists = torch.cdist(flat_vec, flat_vec, p=2.0)
 
-        if 0 < self.threshold < float("inf"):
+        if self.threshold > 0:
             _, _, H, W = patches.shape
             # 1^2 + 0.8^2 + 0.8^2 = 2.28
             # range of L = [0, 1]
@@ -159,15 +167,32 @@ class OklabMetric(MetricStrategy):
 
 
 class CIELABMetric(MetricStrategy):
-    def __init__(self, kl: float = 1.0, kc: float = 1.0, kh: float = 1.0):
+    def __init__(
+        self,
+        kl: float = 1.0,
+        kc: float = 1.0,
+        kh: float = 1.0,
+        threshold: float = 0.0,
+        multiplier: float = 1.0,
+    ):
         self.kl = kl
         self.kc = kc
         self.kh = kh
+        self.threshold = threshold
+        self.multiplier = multiplier
 
     def compute(self, patches: torch.Tensor) -> torch.Tensor:
         lab = self._rgb_to_lab(patches)
         mean_lab = lab.mean(dim=(2, 3))
-        return self._compute_pairwise_delta_e2000(mean_lab)
+        dists = self._compute_pairwise_delta_e2000(mean_lab)
+
+        if self.threshold > 0:
+            dists = torch.where(
+                dists > self.threshold,
+                dists * self.multiplier,
+                dists
+            )
+        return dists
 
     def _rgb_to_lab(self, image: torch.Tensor) -> torch.Tensor:
         mask = image > 0.04045
