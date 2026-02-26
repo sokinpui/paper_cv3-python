@@ -113,10 +113,8 @@ class OklabMetric(MetricStrategy):
             ).view(1, 3, 1, 1)
             oklab = oklab * w_tensor
 
-        oklab_blurred = oklab
-
         # 4. Flatten and Compute Euclidean Distance
-        flat_vec = oklab_blurred.reshape(oklab_blurred.shape[0], -1)
+        flat_vec = oklab.reshape(oklab.shape[0], -1)
         dists = torch.cdist(flat_vec, flat_vec, p=2.0)
 
         if 0 < self.threshold < float("inf"):

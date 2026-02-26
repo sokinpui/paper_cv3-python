@@ -193,6 +193,13 @@ def create_ui(input_dir=None):
                     outputs=oklab_threshold_input,
                 )
 
+                global_blur_input = gr.Radio(
+                    choices=["None", "Light", "Medium", "Heavy"],
+                    value="Light",
+                    label="Global Blur Level",
+                    info="Reduces noise sensitivity across all metrics.",
+                )
+
                 # DBSCAN Settings
                 dbscan_eps_input = gr.Number(
                     value=0.0,
@@ -256,6 +263,7 @@ def create_ui(input_dir=None):
             ssim_alpha_input,
             ssim_beta_input,
             oklab_threshold_input,
+            global_blur_input,
             analysis_state,
         ]
         common_outputs = metric_outputs + [analysis_state]

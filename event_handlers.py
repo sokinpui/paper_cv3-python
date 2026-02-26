@@ -136,6 +136,7 @@ def run_analysis(
     ssim_alpha,
     ssim_beta,
     oklab_threshold,
+    global_blur_level,
     current_state,
 ):
     """
@@ -174,6 +175,11 @@ def run_analysis(
 
         # Store data needed for toggling annotations
         new_state["image_tensor_np"] = image_tensor.cpu().numpy()
+
+        # Apply Global Preprocessing (Blur)
+        blur_map = {"None": 0.0, "Light": 0.5, "Medium": 1.0, "Heavy": 2.0}
+        blur_radius = blur_map.get(global_blur_level, 0.5)
+        image_tensor = processor.apply_preprocessing(image_tensor, blur_radius=blur_radius)
 
         # 2. Tile
         patches, grid_shape, strides = processor.extract_patches(
