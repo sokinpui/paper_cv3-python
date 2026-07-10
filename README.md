@@ -1,19 +1,43 @@
 ### Prerequisites
 
 - NVIDIA GPU + CUDA Toolkit
-- Python 3.8+
+- [uv](https://github.com/astral-sh/uv) (Recommended) or Python 3.12+
 
 ### Setup
 
-Start the virtual environment and install dependencies:
+Create the environment and install dependencies. To ensure GPU support, we point to the PyTorch CUDA wheels:
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+uv venv
+source .venv/bin/activate
 ```
 
 ```bash
-pip install -r requirements.txt
+# Install the package and its dependencies
+uv pip install --find-links https://download.pytorch.org/whl/cu121 -e .
+```
+
+### Network Optimization
+
+If downloading packages is slow, use `tpip` to automatically find and set the fastest PyPI mirror:
+
+```bash
+# Install tpip
+pip install tpip
+
+# Test mirrors and set the best one
+tpip set
+```
+
+Note: If you are using **uv**, it will respect your global pip configuration. Alternatively, you can specify an index explicitly: `uv pip install --index-url <MIRROR_URL> ...`
+
+To permanently set a mirror for this project using **uv**, add the following to your `pyproject.toml`:
+
+```toml
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
 ```
 
 ## Usage

@@ -1,0 +1,38 @@
+[project]
+name = "paper-cv3-python"
+version = "0.1.0"
+description = "GPU-accelerated image anomaly detection and clustering using perceptually uniform color spaces and SSIM."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "torch",
+    "torchvision",
+    "opencv-python",
+    "numpy",
+    "gradio",
+    "scipy",
+    "matplotlib",
+    "watchdog",
+]
+
+[project.scripts]
+anomaly-detect = "main:main"
+anomaly-ui = "app:run_app"
+anomaly-inspect = "inspect_image:main"
+
+[tool.setuptools]
+py-modules = ["app", "main", "inspect_image", "analyzer", "clustering", "config", "event_handlers", "globals", "metrics", "processor", "ui", "ui_helpers", "visualizer"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.pyright]
+include = ["."]
+
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple"
+default = true
+
